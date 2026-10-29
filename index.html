@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TerraChess</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- Piece artwork (referenced by script.js) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<g id="s-p" class="pc"><path d="M38 78C38 62 44 56 44 47H56C56 56 62 62 62 78Z"/><rect x="38" y="43" width="24" height="7" rx="3.5"/><circle cx="50" cy="31" r="13"/><rect x="27" y="77" width="46" height="11" rx="5.5"/></g>
+<g id="s-r" class="pc"><path d="M29 20H39V28H45V20H55V28H61V20H71V38L64 46V66L70 74V80H30V74L36 66V46L29 38Z"/><rect x="26" y="78" width="48" height="11" rx="5.5"/><path class="d" d="M37 46H63M37 66H63"/></g>
+<g id="s-n" class="pc"><path d="M28 82C28 68 33 58 43 50C46 48 44 46 41 47C37 49 34 52 30 54C26 56 22 52 24 48C26 42 32 34 38 26L40 15L47 21C60 19 72 31 74 49C75 62 72 74 74 82Z"/><rect x="25" y="79" width="50" height="11" rx="5.5"/><circle class="e" cx="52" cy="35" r="3.2"/><path class="d" d="M58 27C66 34 68 46 66 60"/></g>
+<g id="s-b" class="pc"><path d="M50 15C62 25 67 34 67 42C67 50 61 54 56 56V62C62 66 64 72 64 78H36C36 72 38 66 44 62V56C39 54 33 50 33 42C33 34 38 25 50 15Z"/><circle cx="50" cy="13" r="4.5"/><rect x="27" y="77" width="46" height="11" rx="5.5"/><path class="d" d="M50 27V40M44 33H56"/></g>
+<g id="s-q" class="pc"><path d="M24 38L33 64L38 34L45 62L50 28L55 62L62 34L67 64L76 38L72 76H28Z"/><circle cx="24" cy="36" r="5"/><circle cx="38" cy="29" r="5"/><circle cx="50" cy="23" r="5"/><circle cx="62" cy="29" r="5"/><circle cx="76" cy="36" r="5"/><rect x="24" y="74" width="52" height="7" rx="3.5"/><rect x="22" y="80" width="56" height="10" rx="5"/></g>
+<g id="s-k" class="pc"><path d="M50 32C62 32 70 40 68 50C66 58 60 62 60 70L68 78H32L40 70C40 62 34 58 32 50C30 40 38 32 50 32Z"/><rect x="46" y="8" width="8" height="25" rx="2"/><rect x="38" y="15" width="24" height="8" rx="2"/><rect x="26" y="77" width="48" height="12" rx="6"/></g>
+</defs></svg>
+
+<header>
+  <a class="brand" href="#home"><i>♞</i>TerraChess</a>
+  <nav id="nav">
+    <a href="#play">Play</a><a href="#online">Online</a><a href="#puzzles">Puzzles</a><a href="#openings">Openings</a><a href="#history">History</a><a href="#profile">Profile</a>
+  </nav>
+  <span id="acc"></span>
+</header>
+<main id="app"></main>
+
+<!-- chess.js handles the rules (needs internet once; or download it and point this tag at the local file) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
