@@ -15,7 +15,7 @@ async function putAcc(id, a) {
   if (cloud) { const r = await fetch(`${cloud}/accounts/${id}.json`, { method: 'PUT', body: JSON.stringify(a) }); if (!r.ok) throw 0; }
   else { ACC[id] = a; localStorage.setItem('tc_acc', JSON.stringify(ACC)); }
 }
-let saveT; const persist = () => { clearTimeout(saveT); saveT = setTimeout(() => putAcc(ME, CUR).catch(() => {}), 600); };
+let saveT; const persist = () => { clearTimeout(saveT); saveT = setTimeout(() => { putAcc(ME, CUR).catch(() => {}); pubPush(); }, 600); };
 const D = () => CUR.d;
 const hex = b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
 async function hashPw(pw, salt) {
@@ -59,7 +59,7 @@ async function doLogin() {
   } catch (e) { msg('Could not reach the account database. Please try again.'); }
 }
 function enter(id, a) { ME = id; CUR = a; localStorage.setItem('tc_s', id); location.hash = '#profile'; route(); }
-function logout() { ME = null; CUR = null; localStorage.removeItem('tc_s'); location.hash = '#login'; route(); }
+function logout() { stopPresence(); ME = null; CUR = null; localStorage.removeItem('tc_s'); location.hash = '#login'; route(); }
 
 /* ---------- Sounds (capture + check) ---------- */
 let AX; const tone = (f, t, d, ty, v) => { const o = AX.createOscillator(), g = AX.createGain(); o.type = ty; o.frequency.value = f; g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.0001, t + d); o.connect(g); g.connect(AX.destination); o.start(t); o.stop(t + d); };
@@ -70,6 +70,10 @@ function sound(mv, g) {
     if (g.in_check()) { const o = mv.captured ? .18 : 0; tone(880, t + o, .13, 'square', .13); tone(1319, t + o + .11, .2, 'square', .13); }
   } catch (e) {}
 }
+
+/* ---------- Pieces: PNG files from the image folder (wk.png, bq.png, ...). If a file is missing, the built-in drawing is used instead. ---------- */
+const pieceImg = (c, t) => `<img src="image/${c}${t}.png" alt="" draggable="false" onerror="pieceFallback(this,'${t}')">`;
+function pieceFallback(img, t) { img.outerHTML = `<svg viewBox="0 0 100 100"><use href="#s-${t}"/></svg>`; }
 
 /* ---------- Board (click, drag, right-click arrows, premoves) ---------- */
 const DR = [[1, 1], [1, -1], [-1, 1], [-1, -1]], OR = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -103,7 +107,7 @@ function Board(el, o) {
       const r = B.flip ? 7 - (i >> 3) : i >> 3, c = B.flip ? 7 - (i & 7) : i & 7, s = nm(r, c), p = bd[r][c]; let k = 'sq ' + ((r + c) % 2 ? 'dk' : 'lt');
       if (s === B.sel) k += ' sel'; if (B.last && B.last.includes(s)) k += ' last'; if (p && p.type === 'k' && p.color === ck) k += ' chk';
       if (B.marks.includes(s)) k += ' red'; if (B.pre.some(m => m.from === s || m.to === s)) k += ' pre';
-      h += `<div class="${k}" data-s="${s}">${tg.includes(s) ? `<i class="${p ? 'cap' : 'dot'}"></i>` : ''}${p ? `<b class="${p.color}"><svg viewBox="0 0 100 100"><use href="#s-${p.type}"/></svg></b>` : ''}</div>`;
+      h += `<div class="${k}" data-s="${s}">${tg.includes(s) ? `<i class="${p ? 'cap' : 'dot'}"></i>` : ''}${p ? `<b class="${p.color}">${pieceImg(p.color, p.type)}</b>` : ''}</div>`;
     }
     el.innerHTML = h + B.svg(); B.fx();
   };
@@ -125,7 +129,7 @@ function Board(el, o) {
     if (!B.skip) { slide(f, t); if (pf[1] === 'k' && Math.abs((t & 7) - (f & 7)) === 2) { const rr = f >> 3, right = (t & 7) > (f & 7); slide(rr * 8 + (right ? 7 : 0), rr * 8 + (right ? 5 : 3)); } }
     const dEl = sqEl(t);
     if (cap && dEl) {
-      const gh = document.createElement('b'); gh.className = cap[0]; gh.innerHTML = `<svg viewBox="0 0 100 100"><use href="#s-${cap[1]}"/></svg>`; gh.style.cssText = 'position:absolute;inset:4%;width:auto;height:auto;z-index:0;pointer-events:none'; dEl.appendChild(gh);
+      const gh = document.createElement('b'); gh.className = cap[0]; gh.innerHTML = pieceImg(cap[0], cap[1]); gh.style.cssText = 'position:absolute;inset:4%;width:auto;height:auto;z-index:0;pointer-events:none'; dEl.appendChild(gh);
       gh.animate([{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.4) rotate(25deg)', opacity: 0 }], { duration: 300, delay: B.skip ? 0 : 120, easing: 'ease-in', fill: 'both' }).onfinish = () => gh.remove(); ring(dEl, '#ff7a18', B.skip ? 0 : 140);
     }
     if (B.g.in_check()) { const k = cur.indexOf(B.g.turn() + 'k'), ke = k >= 0 && sqEl(k); if (ke) { ring(ke, '#e11d1d', B.skip ? 0 : 200); const kp = ke.querySelector('b'); kp && kp.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-4px)' }, { transform: 'translateX(4px)' }, { transform: 'translateX(-3px)' }, { transform: 'none' }], { duration: 340, delay: B.skip ? 0 : 220 }); } }
@@ -139,7 +143,7 @@ function Board(el, o) {
     ['q', 'n', 'r', 'b'].forEach((pc, i) => {
       const d = document.createElement('div'); d.className = 'sq pp'; d.title = { q: 'Queen', n: 'Knight', r: 'Rook', b: 'Bishop' }[pc];
       d.style.cssText = `left:${rect.left + (cx - .5) * sz}px;top:${rect.top + (cy - .5 + i * dir) * sz}px;width:${sz}px;height:${sz}px`;
-      d.innerHTML = `<b class="${color}"><svg viewBox="0 0 100 100"><use href="#s-${pc}"/></svg></b>`;
+      d.innerHTML = `<b class="${color}">${pieceImg(color, pc)}</b>`;
       d.onclick = () => { close(); B.try(f, t, pc); }; document.body.appendChild(d); els.push(d);
     });
     B.draw();
@@ -763,19 +767,19 @@ function historyView() {
   }).join('')}</table>` : '<span class="mut">No games yet. Finish a game and it will show up here.</span>'}</div></div>`;
 }
 let GV = null;
-function gameView(id) {
-  const g = (D().hist || []).find(x => x.id === id); if (!g) { location.hash = '#history'; return; }
-  GV = { g, mv: g.mv.split(' ').filter(Boolean), tl: (g.tl || '').split(' ').filter(Boolean).map(Number), n: 0 };
+function gameView(id, rec, who, back) {
+  const g = rec || (D().hist || []).find(x => x.id === id); if (!g) { location.hash = '#history'; return; }
+  GV = { who, back: back || '#history', g, mv: g.mv.split(' ').filter(Boolean), tl: (g.tl || '').split(' ').filter(Boolean).map(Number), n: 0 };
   $('#app').innerHTML = layout(); GV.B = Board($('#bd'), { g: new Chess(), can: () => false }); GV.B.flip = g.me === 'b'; gvShow(GV.mv.length);
 }
 function gvShow(n) {
-  const G = GV, g = G.g; G.n = Math.max(0, Math.min(G.mv.length, n)); const ch = new Chess(); let last = null;
+  const G = GV, g = G.g, you = G.who ? esc(G.who) : 'You'; G.n = Math.max(0, Math.min(G.mv.length, n)); const ch = new Chess(); let last = null;
   for (let k = 0; k < G.n; k++) { const m = ch.move(G.mv[k], { sloppy: true }); last = m && [m.from, m.to]; }
   G.B.g = ch; G.B.last = last; G.B.sel = null; G.B.draw(); if (G.n) sound({ captured: /x/.test(G.mv[G.n - 1]) }, { in_check: () => /[+#]/.test(G.mv[G.n - 1]) });
   const cell = k => k < G.mv.length ? `<td class="gm ${k === G.n - 1 ? 'cur' : ''}" onclick="gvShow(${k + 1})">${G.mv[k]} <span class="tm">${G.tl[k] != null ? fmt(G.tl[k]) : ''}</span></td>` : '<td></td>';
   let rows = ''; for (let i = 0; i < G.mv.length; i += 2) rows += `<tr><td class="mn">${i / 2 + 1}.</td>${cell(i)}${cell(i + 1)}</tr>`;
-  $('#pn').innerHTML = `<p style="margin:0"><a href="#history">← Game history</a></p><h2>${g.me === 'w' ? 'You' : esc(g.opp)} vs ${g.me === 'w' ? esc(g.opp) : 'You'}</h2>
-  <div class="stat">${g.res === 'd' ? 'Draw' : g.res === g.me ? 'You won' : 'You lost'}${g.why ? ' (' + esc(g.why) + ')' : ''} · ${g.mode} · ${g.tc}<br><span class="mut" style="font-weight:400">${new Date(g.date).toLocaleString()}</span></div>
+  $('#pn').innerHTML = `<p style="margin:0"><a href="${G.back}">← ${G.who ? 'Back to ' + esc(G.who) : 'Game history'}</a></p><h2>${g.me === 'w' ? you : esc(g.opp)} vs ${g.me === 'w' ? esc(g.opp) : you}</h2>
+  <div class="stat">${g.res === 'd' ? 'Draw' : g.res === g.me ? you + ' won' : (G.who ? esc(g.opp) + ' won' : 'You lost')}${g.why ? ' (' + esc(g.why) + ')' : ''} · ${g.mode} · ${g.tc}<br><span class="mut" style="font-weight:400">${new Date(g.date).toLocaleString()}</span></div>
   ${openingBox(g.op)}<div class="mv" style="max-height:300px"><table class="mvt">${rows}</table></div>
   <p class="mut" style="font-size:13px;margin:6px 0 0">The small number next to each move is the time that player had left after making it.</p>
   <div class="row"><button class="chip" onclick="gvShow(0)">⏮</button><button class="chip" onclick="gvShow(GV.n-1)">◀</button><button class="chip" onclick="gvShow(GV.n+1)">▶</button><button class="chip" onclick="gvShow(GV.mv.length)">⏭</button><button class="chip" onclick="GV.B.flip=!GV.B.flip;GV.B.draw()">Flip board</button></div>`;
@@ -807,6 +811,58 @@ function titlesView() {
   }).join('')}</div></div>`;
 }
 
+/* ---------- Search: online players, all players, and player profiles (public data lives in the shared database) ---------- */
+let SR = null, PRES = null;
+function pubPush() {   // publish my public profile (rating, title, recent games) so other players can look me up
+  if (!cloud || !ME || !CUR) return; const d = D(), t = titleOf(d);
+  api('roster/' + ME, 'PATCH', { u: CUR.u, r: d.rating, t, seen: { '.sv': 'timestamp' } }).catch(() => {});
+  api('players/' + ME, 'PUT', { u: CUR.u, r: d.rating, t, ti: d.titles || [], w: d.w || 0, peak: d.peak || d.rating, h: (d.hist || []).slice(0, 15) }).catch(() => {});
+}
+function startPresence() {   // heartbeat: a player counts as online if seen in the last minute
+  if (!cloud || PRES || !ME) return; pubPush();
+  const beat = () => { if (ME) api('roster/' + ME + '/seen', 'PUT', { '.sv': 'timestamp' }).then(v => { OFF = v - Date.now(); }).catch(() => {}); };
+  beat(); PRES = setInterval(beat, 20000);
+}
+function stopPresence() { clearInterval(PRES); PRES = null; if (cloud && ME) api('roster/' + ME + '/seen', 'PUT', 0).catch(() => {}); }
+async function roster() {
+  if (cloud) return (await api('roster')) || {};
+  const o = {}; for (const id in ACC) { const d = ACC[id].d || {}; o[id] = { u: ACC[id].u, r: d.rating || 800, t: titleOf(d), seen: id === ME ? snow() : 0 }; } return o;
+}
+async function getPlayer(id) {
+  if (cloud) { const p = await api('players/' + id); if (p) p.h = p.h || []; return p; }
+  const a = ACC[id]; if (!a) return null; const d = a.d || {};
+  return { u: a.u, r: d.rating || 800, t: titleOf(d), ti: d.titles || [], w: d.w || 0, peak: d.peak || d.rating || 800, h: (d.hist || []).slice(0, 15) };
+}
+async function searchView(tab) {
+  tab = tab === 'all' ? 'all' : 'online'; clearInterval(SR);
+  $('#app').innerHTML = `<div class="wrap"><div class="chips" style="margin:0 0 14px"><a class="chip ${tab === 'online' ? 'on' : ''}" href="#search">Online</a><a class="chip ${tab === 'all' ? 'on' : ''}" href="#search/all">All players</a></div>
+  <div class="card" style="overflow-x:auto" id="sr"><span class="mut">Loading…</span></div>${cloud ? '' : '<p class="mut" style="font-size:14px">Without a shared database (DB_URL) you only see accounts made in this browser.</p>'}</div>`;
+  const load = async () => {
+    const box = $('#sr'); if (!box) return;
+    try {
+      const r = await roster(), now = snow(), all = Object.entries(r).filter(([, x]) => x && x.u).map(([id, x]) => ({ id, ...x, on: id === ME || (x.seen && now - x.seen < 60000) }));
+      const rows = (tab === 'online' ? all.filter(x => x.on) : all).sort((a, b) => b.r - a.r);
+      box.innerHTML = rows.length ? `<h3 style="margin-top:0">${tab === 'online' ? 'Players online now' : 'All players'} <span class="mut">(${rows.length})</span></h3><table class="ht">${rows.map(x => `<tr onclick="location.hash='#player/${x.id}'"><td><i class="dot ${x.on ? 'on' : ''}"></i>${tt(x.t)}<b>${esc(x.u)}</b>${x.id === ME ? ' <span class="mut">(you)</span>' : ''}</td><td>${x.r || 800} Elo</td><td class="mut">${x.on ? 'Online' : 'Offline'}</td></tr>`).join('')}</table>` : '<span class="mut">Nobody is online right now.</span>';
+    } catch (e) { box.innerHTML = '<span class="mut">Could not load players. Please try again.</span>'; }
+  };
+  load(); if (tab === 'online') SR = setInterval(() => { if (location.hash.startsWith('#search')) load(); }, 10000);
+}
+async function playerView(id) {
+  $('#app').innerHTML = '<div class="wrap"><span class="mut">Loading…</span></div>'; let p = null;
+  try { p = await getPlayer(id); } catch (e) {}
+  if (!p) { $('#app').innerHTML = '<div class="wrap"><p><a href="#search/all">← Players</a></p><div class="card">This player could not be found.</div></div>'; return; }
+  const h = p.h || [], won = h.filter(g => g.res === g.me).length;
+  $('#app').innerHTML = `<div class="wrap"><p><a href="#search/all">← Players</a></p><h2>${tt(p.t)}${esc(p.u)}</h2>
+  <div class="card"><div style="font:700 54px Georgia,serif;color:var(--deep)">${p.r}</div><span class="mut">Elo rating</span><p>Peak ${p.peak || p.r} · ${p.w || 0} wins${(p.ti || []).length ? ' · Titles: ' + p.ti.map(tt).join('') : ''}</p></div>
+  <h3>Game history</h3><div class="card" style="overflow-x:auto">${h.length ? `<table class="ht">${h.map(g => { const r = g.res === 'd' ? 'Draw' : g.res === g.me ? 'Win' : 'Loss';
+    return `<tr onclick="location.hash='#pgame/${id}/${g.id}'"><td><b class="${r}">${r}</b></td><td>${g.me === 'w' ? '⚪' : '⚫'} vs ${esc(g.opp)} <span class="mut">${g.oppR || ''}</span></td><td class="mut">${esc(g.op || '')}</td><td>${Math.ceil(g.mv.split(' ').filter(Boolean).length / 2)} moves</td><td class="mut">${g.mode} · ${g.tc}</td><td>${g.delta >= 0 ? '+' : ''}${g.delta}</td><td class="mut">${new Date(g.date).toLocaleDateString()}</td></tr>`; }).join('')}</table>` : '<span class="mut">No games to show yet.</span>'}</div></div>`;
+}
+async function pgameView(arg) {
+  const [id, gid] = arg.split('/'); let p = null; try { p = await getPlayer(id); } catch (e) {}
+  const g = p && (p.h || []).find(x => x.id === gid); if (!g) { location.hash = '#player/' + id; return; }
+  gameView(gid, g, p.u, '#player/' + id);
+}
+
 /* ---------- Home, profile, router ---------- */
 function homeView() {
   $('#app').innerHTML = `<div class="wrap"><h1 style="font-size:46px;color:var(--deep)">Learn chess. Play like a grandmaster.</h1>
@@ -819,16 +875,18 @@ function profileView() {
   <p>${w} wins · ${dr} draws · ${d.games.length - w - dr} losses · ${d.pz.length}/${PZ.length} puzzles</p></div>
   <h3>Recent games</h3><div class="card">${d.games.length ? '<table>' + d.games.slice(0, 10).map(g => `<tr><td>${g.s === 1 ? 'Win' : g.s === .5 ? 'Draw' : 'Loss'}</td><td>vs ${g.b}</td><td>${Math.ceil(g.n / 2)} moves</td><td>${g.d >= 0 ? '+' : ''}${g.d}</td></tr>`).join('') + '</table>' : '<span class="mut">No games yet.</span>'}</div></div>`;
 }
-const VIEWS = { home: homeView, play: playView, puzzles: puzzleView, openings: openingsView, profile: profileView, online: onlineView, titles: titlesView, history: historyView, game: gameView, login: () => authView(false), signup: () => authView(true) };
+const VIEWS = { home: homeView, play: playView, puzzles: puzzleView, openings: openingsView, profile: profileView, online: onlineView, titles: titlesView, history: historyView, game: gameView, search: searchView, player: playerView, pgame: pgameView, login: () => authView(false), signup: () => authView(true) };
+const NAV = [['play', 'Play'], ['online', 'Online'], ['puzzles', 'Puzzles'], ['openings', 'Openings'], ['history', 'History'], ['titles', 'Titles'], ['search', 'Search'], ['profile', 'Profile']];
 function route() {
-  speechSynthesis.cancel(); stopOnline();
+  speechSynthesis.cancel(); stopOnline(); clearInterval(SR);
+  $('#nav').innerHTML = NAV.map(([k, l]) => `<a href="#${k}">${l}</a>`).join('');   // the menu is built here, so it always matches the pages
   document.body.classList.toggle('out', !ME);
   $('#acc').innerHTML = ME ? `<span class="chip">👤 ${tt(titleOf(D()))}${esc(CUR.u)} · ${D().rating}</span><button class="chip" onclick="logout()">Log out</button>` : '<a class="chip" href="#login">Log in</a><a class="btn" style="margin:0;padding:7px 14px" href="#signup">Sign up</a>';
-  let k = location.hash.slice(1), arg = null; if (k.startsWith('game/')) { arg = k.slice(5); k = 'game'; } if (!VIEWS[k]) k = 'home';
+  let k = location.hash.slice(1), arg = null; const sl = k.indexOf('/'); if (sl > 0) { arg = k.slice(sl + 1); k = k.slice(0, sl); } if (!VIEWS[k]) k = 'home';
   if (!ME && k !== 'login' && k !== 'signup') { location.hash = '#login'; return; }   // everything needs an account
   if (ME && !CUR) return logout();
-  document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + (k === 'game' ? 'history' : k)));
-  VIEWS[k](arg); scrollTo(0, 0);
+  document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + (k === 'game' ? 'history' : ['search', 'player', 'pgame'].includes(k) ? 'search' : k)));
+  startPresence(); VIEWS[k](arg); scrollTo(0, 0);
 }
 addEventListener('hashchange', route);
 (async () => { if (ME) { try { CUR = await getAcc(ME); } catch (e) {} if (!CUR) ME = null; } route(); })();
