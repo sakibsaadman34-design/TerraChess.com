@@ -63,10 +63,17 @@ function logout() { stopPresence(); ME = null; CUR = null; localStorage.removeIt
 
 /* ---------- Sounds (capture + check) ---------- */
 let AX; const tone = (f, t, d, ty, v) => { const o = AX.createOscillator(), g = AX.createGain(); o.type = ty; o.frequency.value = f; g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.0001, t + d); o.connect(g); g.connect(AX.destination); o.start(t); o.stop(t + d); };
-function sound(mv, g) {   // three different sounds: capture (low thud), check (two high beeps), checkmate (deep boom + rising chord)
+function noise(t, d, v, f) {   // short filtered burst, used for the "clack" of a capture
+  const len = Math.floor(AX.sampleRate * d), buf = AX.createBuffer(1, len, AX.sampleRate), data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+  const src = AX.createBufferSource(), fl = AX.createBiquadFilter(), g = AX.createGain(); src.buffer = buf; fl.type = 'bandpass'; fl.frequency.value = f; g.gain.value = v;
+  src.connect(fl); fl.connect(g); g.connect(AX.destination); src.start(t);
+}
+addEventListener('pointerdown', () => { try { AX = AX || new AudioContext(); AX.resume(); } catch (e) {} }, { once: true });   // browsers only allow sound after a click
+function sound(mv, g) {   // three different sounds: capture (loud wooden clack), check (two high beeps), checkmate (deep boom + rising chord)
   try {
-    AX = AX || new AudioContext(); AX.resume(); const t = AX.currentTime, mate = g.in_checkmate && g.in_checkmate(), late = mv.captured ? .2 : 0;
-    if (mv.captured) { tone(170, t, .14, 'triangle', .5); tone(85, t, .18, 'sine', .5); }
+    AX = AX || new AudioContext(); AX.resume(); const t = AX.currentTime + .02, mate = g.in_checkmate && g.in_checkmate(), late = mv.captured ? .22 : 0;
+    if (mv.captured) { noise(t, .1, 1.6, 1600); tone(420, t, .12, 'triangle', .7); tone(240, t, .16, 'sine', .6); }
     if (mate) { tone(65, t + late, .9, 'sawtooth', .3); tone(523, t + late + .05, .6, 'triangle', .25); tone(659, t + late + .2, .6, 'triangle', .25); tone(784, t + late + .35, .6, 'triangle', .25); tone(1047, t + late + .5, 1.1, 'triangle', .25); }
     else if (g.in_check()) { tone(880, t + late, .13, 'square', .13); tone(1319, t + late + .11, .2, 'square', .13); }
   } catch (e) {}
@@ -847,9 +854,20 @@ async function getPlayer(id) {
   return { u: a.u, r: d.rating || 800, t: titleOf(d), ti: d.titles || [], w: d.w || 0, peak: d.peak || d.rating || 800, h: (d.hist || []).slice(0, 15) };
 }
 async function searchView(tab) {
-  tab = tab === 'all' ? 'all' : 'online'; clearInterval(SR);
-  $('#app').innerHTML = `<div class="wrap"><div class="chips" style="margin:0 0 14px"><a class="chip ${tab === 'online' ? 'on' : ''}" href="#search">Online</a><a class="chip ${tab === 'all' ? 'on' : ''}" href="#search/all">All players</a></div>
+  tab = tab === 'all' ? 'all' : tab === 'find' ? 'find' : 'online'; clearInterval(SR);
+  $('#app').innerHTML = `<div class="wrap"><div class="chips" style="margin:0 0 14px"><a class="chip ${tab === 'online' ? 'on' : ''}" href="#search">Online</a><a class="chip ${tab === 'all' ? 'on' : ''}" href="#search/all">All players</a><a class="chip ${tab === 'find' ? 'on' : ''}" href="#search/find">Search</a></div>
   <div class="card" style="overflow-x:auto" id="sr"><span class="mut">Loading…</span></div>${cloud ? '' : '<p class="mut" style="font-size:14px">Without a shared database (DB_URL) you only see accounts made in this browser.</p>'}</div>`;
+  if (tab === 'find') {   // type a name, see every player whose name contains it
+    $('#sr').innerHTML = '<input id="q" class="fi" placeholder="Search players by name…" autocomplete="off" style="margin-bottom:12px"><div id="qr"><span class="mut">Type a name to search.</span></div>';
+    let all = []; const show = () => {
+      const q = $('#q').value.trim().toLowerCase(), out = $('#qr'); if (!out) return;
+      if (!q) { out.innerHTML = '<span class="mut">Type a name to search.</span>'; return; }
+      const rows = all.filter(x => x.u.toLowerCase().includes(q)).sort((a, b) => (b.u.toLowerCase().startsWith(q) - a.u.toLowerCase().startsWith(q)) || b.r - a.r);
+      out.innerHTML = rows.length ? `<table class="ht">${rows.map(x => `<tr onclick="location.hash='#player/${x.id}'"><td><i class="dot ${x.on ? 'on' : ''}"></i>${tt(x.t)}<b>${esc(x.u)}</b>${x.id === ME ? ' <span class="mut">(you)</span>' : ''}</td><td>${x.r || 800} Elo</td><td class="mut">${x.on ? 'Online' : 'Offline'}</td></tr>`).join('')}</table>` : `<span class="mut">No players match “${esc($('#q').value.trim())}”.</span>`;
+    };
+    roster().then(r => { const now = snow(); all = Object.entries(r).filter(([, x]) => x && x.u).map(([id, x]) => ({ id, ...x, on: id === ME || (x.seen && now - x.seen < 60000) })); show(); }).catch(() => { $('#qr').innerHTML = '<span class="mut">Could not load players. Please try again.</span>'; });
+    $('#q').addEventListener('input', show); $('#q').focus(); return;
+  }
   const load = async () => {
     const box = $('#sr'); if (!box) return;
     try {
