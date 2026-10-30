@@ -2,7 +2,11 @@
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-const DB_URL = 'https://terra-chess-2fc28-default-rtdb.firebaseio.com/';
+/* ---------- Accounts ---------- */
+// MAKE ACCOUNTS WORK IN EVERY BROWSER: create a free Firebase project -> Build -> Realtime Database -> "Create database"
+// -> start in TEST mode, then paste its URL below, e.g. 'https://my-terrachess-default-rtdb.firebaseio.com'
+// Leave it empty and accounts are saved in this browser only.
+const DB_URL = 'https://terra-chess-2fc28-default-rtdb.firebaseio.com';
 const cloud = DB_URL.replace(/\/+$/, '');
 let ACC = JSON.parse(localStorage.getItem('tc_acc') || '{}'), ME = localStorage.getItem('tc_s'), CUR = null;
 const norm = a => { if (a) { a.d = a.d || {}; a.d.games = a.d.games || []; a.d.pz = a.d.pz || []; a.d.hist = a.d.hist || []; a.d.beat = a.d.beat || {}; a.d.tw = a.d.tw || {}; a.d.titles = a.d.titles || []; a.d.rating = a.d.rating || 800; } return a; };
@@ -59,11 +63,12 @@ function logout() { stopPresence(); ME = null; CUR = null; localStorage.removeIt
 
 /* ---------- Sounds (capture + check) ---------- */
 let AX; const tone = (f, t, d, ty, v) => { const o = AX.createOscillator(), g = AX.createGain(); o.type = ty; o.frequency.value = f; g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.0001, t + d); o.connect(g); g.connect(AX.destination); o.start(t); o.stop(t + d); };
-function sound(mv, g) {
+function sound(mv, g) {   // three different sounds: capture (low thud), check (two high beeps), checkmate (deep boom + rising chord)
   try {
-    AX = AX || new AudioContext(); AX.resume(); const t = AX.currentTime;
+    AX = AX || new AudioContext(); AX.resume(); const t = AX.currentTime, mate = g.in_checkmate && g.in_checkmate(), late = mv.captured ? .2 : 0;
     if (mv.captured) { tone(170, t, .14, 'triangle', .5); tone(85, t, .18, 'sine', .5); }
-    if (g.in_check()) { const o = mv.captured ? .18 : 0; tone(880, t + o, .13, 'square', .13); tone(1319, t + o + .11, .2, 'square', .13); }
+    if (mate) { tone(65, t + late, .9, 'sawtooth', .3); tone(523, t + late + .05, .6, 'triangle', .25); tone(659, t + late + .2, .6, 'triangle', .25); tone(784, t + late + .35, .6, 'triangle', .25); tone(1047, t + late + .5, 1.1, 'triangle', .25); }
+    else if (g.in_check()) { tone(880, t + late, .13, 'square', .13); tone(1319, t + late + .11, .2, 'square', .13); }
   } catch (e) {}
 }
 
@@ -706,7 +711,7 @@ function startOnline(gid, d) {
 function applyOnline(d, first) {
   const G = OLN.g, B = OLN.B, ps = plies(d); G.d = d; G.n = ps.length;
   B.g = new Chess(d.fen); B.sel = null; B.last = d.last ? [d.last.slice(0, 2), d.last.slice(2, 4)] : null; B.draw();
-  if (!first && ps.length) { const s = ps[ps.length - 1]; sound({ captured: /x/.test(s) }, { in_check: () => /[+#]/.test(s) }); }
+  if (!first && ps.length) { const s = ps[ps.length - 1]; sound({ captured: /x/.test(s) }, { in_check: () => /[+#]/.test(s), in_checkmate: () => /#/.test(s) }); }
   onlinePanel(); if (d.st === 'live') setTimeout(() => OLN.B && OLN.B.autoPre(), 150);   // your next premove plays now
   if (d.st === 'done') endOnline(d);
 }
@@ -771,7 +776,7 @@ function gameView(id, rec, who, back) {
 function gvShow(n) {
   const G = GV, g = G.g, you = G.who ? esc(G.who) : 'You'; G.n = Math.max(0, Math.min(G.mv.length, n)); const ch = new Chess(); let last = null;
   for (let k = 0; k < G.n; k++) { const m = ch.move(G.mv[k], { sloppy: true }); last = m && [m.from, m.to]; }
-  G.B.g = ch; G.B.last = last; G.B.sel = null; G.B.draw(); if (G.n) sound({ captured: /x/.test(G.mv[G.n - 1]) }, { in_check: () => /[+#]/.test(G.mv[G.n - 1]) });
+  G.B.g = ch; G.B.last = last; G.B.sel = null; G.B.draw(); if (G.n) sound({ captured: /x/.test(G.mv[G.n - 1]) }, { in_check: () => /[+#]/.test(G.mv[G.n - 1]), in_checkmate: () => /#/.test(G.mv[G.n - 1]) });
   const cell = k => k < G.mv.length ? `<td class="gm ${k === G.n - 1 ? 'cur' : ''}" onclick="gvShow(${k + 1})">${G.mv[k]} <span class="tm">${G.tl[k] != null ? fmt(G.tl[k]) : ''}</span></td>` : '<td></td>';
   let rows = ''; for (let i = 0; i < G.mv.length; i += 2) rows += `<tr><td class="mn">${i / 2 + 1}.</td>${cell(i)}${cell(i + 1)}</tr>`;
   $('#pn').innerHTML = `<p style="margin:0"><a href="${G.back}">← ${G.who ? 'Back to ' + esc(G.who) : 'Game history'}</a></p><h2>${g.me === 'w' ? you : esc(g.opp)} vs ${g.me === 'w' ? esc(g.opp) : you}</h2>
