@@ -72,7 +72,7 @@ function sound(mv, g) {
 }
 
 /* ---------- Pieces: PNG files from the image folder (wk.png, bq.png, ...). If a file is missing, the built-in drawing is used instead. ---------- */
-const pieceImg = (c, t) => `<img src="image/${c}${t}.png" alt="" draggable="false" onerror="pieceFallback(this,'${t}')">`;
+const pieceImg = (c, t) => `<img src="image/${c}${t}.png" alt="" draggable="false" style="width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;display:block;pointer-events:none" onerror="pieceFallback(this,'${t}')">`;
 function pieceFallback(img, t) { img.outerHTML = `<svg viewBox="0 0 100 100"><use href="#s-${t}"/></svg>`; }
 
 /* ---------- Board (click, drag, right-click arrows, premoves) ---------- */
