@@ -2,10 +2,6 @@
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-/* ---------- Accounts ---------- */
-// MAKE ACCOUNTS WORK IN EVERY BROWSER: create a free Firebase project -> Build -> Realtime Database -> "Create database"
-// -> start in TEST mode, then paste its URL below, e.g. 'https://my-terrachess-default-rtdb.firebaseio.com'
-// Leave it empty and accounts are saved in this browser only.
 const DB_URL = 'https://terra-chess-2fc28-default-rtdb.firebaseio.com/';
 const cloud = DB_URL.replace(/\/+$/, '');
 let ACC = JSON.parse(localStorage.getItem('tc_acc') || '{}'), ME = localStorage.getItem('tc_s'), CUR = null;
@@ -825,11 +821,23 @@ function startPresence() {   // heartbeat: a player counts as online if seen in 
 }
 function stopPresence() { clearInterval(PRES); PRES = null; if (cloud && ME) api('roster/' + ME + '/seen', 'PUT', 0).catch(() => {}); }
 async function roster() {
-  if (cloud) return (await api('roster')) || {};
+  if (cloud) {   // the roster only has players who have logged in since this feature existed, so also read the account list and fill in anyone missing
+    const [r, keys] = await Promise.all([api('roster'), fetch(`${cloud}/accounts.json?shallow=true`).then(x => x.json())]), out = r || {};
+    await Promise.all(Object.keys(keys || {}).filter(id => !out[id] || !out[id].u).map(async id => {
+      const [u, rt, ti] = await Promise.all([api(`accounts/${id}/u`), api(`accounts/${id}/d/rating`), api(`accounts/${id}/d/titles`)]), t = titleOf({ titles: ti || [] });
+      out[id] = Object.assign(out[id] || {}, { u: u || id, r: rt || 800, t, seen: (out[id] || {}).seen || 0 });
+      api('roster/' + id, 'PATCH', { u: u || id, r: rt || 800, t }).catch(() => {});
+    }));
+    return out;
+  }
   const o = {}; for (const id in ACC) { const d = ACC[id].d || {}; o[id] = { u: ACC[id].u, r: d.rating || 800, t: titleOf(d), seen: id === ME ? snow() : 0 }; } return o;
 }
 async function getPlayer(id) {
-  if (cloud) { const p = await api('players/' + id); if (p) p.h = p.h || []; return p; }
+  if (cloud) {
+    let p = await api('players/' + id);
+    if (!p) { const [u, d] = await Promise.all([api(`accounts/${id}/u`), api(`accounts/${id}/d`)]); if (!u) return null; p = { u, r: (d || {}).rating || 800, t: titleOf(d || {}), ti: (d || {}).titles || [], w: (d || {}).w || 0, peak: (d || {}).peak || (d || {}).rating || 800, h: ((d || {}).hist || []).slice(0, 15) }; }
+    p.h = p.h || []; return p;
+  }
   const a = ACC[id]; if (!a) return null; const d = a.d || {};
   return { u: a.u, r: d.rating || 800, t: titleOf(d), ti: d.titles || [], w: d.w || 0, peak: d.peak || d.rating || 800, h: (d.hist || []).slice(0, 15) };
 }
