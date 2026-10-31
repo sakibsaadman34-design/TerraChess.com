@@ -58,7 +58,7 @@ async function doLogin() {
     enter(id, a);
   } catch (e) { msg('Could not reach the account database. Please try again.'); }
 }
-function enter(id, a) { ME = id; CUR = a; localStorage.setItem('tc_s', id); location.hash = '#profile'; route(); }
+function enter(id, a) { ME = id; CUR = a; localStorage.setItem('tc_s', id); loadMyTitle().finally(() => { location.hash = '#profile'; route(); }); }
 function logout() { stopPresence(); ME = null; CUR = null; localStorage.removeItem('tc_s'); location.hash = '#login'; route(); }
 
 /* ---------- Sounds (capture + check) ---------- */
@@ -115,7 +115,7 @@ function Board(el, o) {
       const r = B.flip ? 7 - (i >> 3) : i >> 3, c = B.flip ? 7 - (i & 7) : i & 7, s = nm(r, c), p = bd[r][c]; let k = 'sq ' + ((r + c) % 2 ? 'dk' : 'lt');
       if (s === B.sel) k += ' sel'; if (B.last && B.last.includes(s)) k += ' last'; if (p && p.type === 'k' && p.color === ck) k += ' chk';
       if (B.marks.includes(s)) k += ' red'; if (B.pre.some(m => m.from === s || m.to === s)) k += ' pre';
-      h += `<div class="${k}" data-s="${s}">${tg.includes(s) ? `<i class="${p ? 'cap' : 'dot'}"></i>` : ''}${p ? `<b class="${p.color}">${pieceImg(p.color, p.type)}</b>` : ''}</div>`;
+      h += `<div class="${k}" data-s="${s}">${tg.includes(s) ? `<i class="${p ? 'cap' : 'dot'}"></i>` : ''}${p ? `<b class="${p.color}">${pieceImg(p.color, p.type)}</b>` : ''}${B.badge && B.badge.sq === s ? `<img class="bdg" src="reviews/${B.badge.k}.png" alt="">` : ''}</div>`;
     }
     el.innerHTML = h + B.svg(); B.fx();
   };
@@ -495,7 +495,7 @@ function endCheck() { if (P.g.game_over()) { finish(P.g.in_checkmate() ? (P.g.tu
 function finish(w, why) {
   if (!P.on) return; P.on = false; P.over = true; P.think = false; killWorker(); P.tok++; clearInterval(P.iv); P.B.pre = [];
   const bt = BOTS[P.bot], d = D(), sc = w === 'd' ? .5 : w === P.me ? 1 : 0, E = 1 / (1 + 10 ** ((bt.r - d.rating) / 400)), delta = Math.round(32 * (sc - E));
-  d.rating += delta; d.peak = Math.max(d.peak || 0, d.rating); if (sc === 1 && bt.title) { d.tw = d.tw || {}; d.titles = d.titles || []; d.tw[bt.title] = (d.tw[bt.title] || 0) + 1; if (d.tw[bt.title] >= 3 && !d.titles.includes(bt.title)) { d.titles.push(bt.title); P.earned = bt.title; } }
+  d.rating += delta; d.peak = Math.max(d.peak || 0, d.rating); if (sc === 1 && bt.title) { d.tw = d.tw || {}; d.titles = d.titles || []; d.tw[bt.title] = (d.tw[bt.title] || 0) + 1; if (d.tw[bt.title] >= 3 && !d.titles.includes(bt.title)) { d.titles.push(bt.title); P.earned = bt.title; setMyTitle(bt.title); } }
   if (sc === 1) { d.w = (d.w || 0) + 1; d.beat = d.beat || {}; d.beat[bt.n] = (d.beat[bt.n] || 0) + 1; } d.games.unshift({ s: sc, b: bt.n, d: delta, n: P.g.history().length }); d.games = d.games.slice(0, 40);
   saveGame({ mode: 'Bot', opp: bt.n, oppR: bt.r, me: P.me, res: w, why: why || '', tc: P.tc.l, mv: P.g.history().join(' '), tl: (P.tl || []).join(' '), op: P.openName || '', delta }); persist();
   P.msg = (sc === 1 ? 'You won' : sc === .5 ? 'Draw' : 'You lost') + (why ? ' ' + why : '') + `. Elo ${delta >= 0 ? '+' : ''}${delta} → ${d.rating}`;
@@ -771,7 +771,7 @@ function historyView() {
   const hs = D().hist || [];
   $('#app').innerHTML = `<div class="wrap"><h2>Game history</h2><div class="card" style="overflow-x:auto">${hs.length ? `<table class="ht">${hs.map(g => {
     const r = g.res === 'd' ? 'Draw' : g.res === g.me ? 'Win' : 'Loss', n = Math.ceil(g.mv.split(' ').filter(Boolean).length / 2);
-    return `<tr onclick="location.hash='#game/${g.id}'"><td><b class="${r}">${r}</b></td><td>${g.me === 'w' ? '⚪' : '⚫'} vs ${esc(g.opp)} <span class="mut">${g.oppR || ''}</span></td><td class="mut">${esc(g.op || '')}</td><td>${n} moves</td><td class="mut">${g.mode} · ${g.tc}</td><td>${g.delta >= 0 ? '+' : ''}${g.delta}</td><td class="mut">${new Date(g.date).toLocaleDateString()}</td></tr>`;
+    return `<tr onclick="location.hash='#game/${g.id}'"><td><b class="${r}">${r}</b></td><td>${g.me === 'w' ? '⚪' : '⚫'} vs ${esc(g.opp)} <span class="mut">${g.oppR || ''}</span></td><td class="mut">${esc(g.op || '')}</td><td>${n} moves</td><td class="mut">${g.mode} · ${g.tc}</td><td>${g.delta >= 0 ? '+' : ''}${g.delta}</td><td class="mut">${new Date(g.date).toLocaleDateString()}</td><td><a class="chip" onclick="event.stopPropagation();location.hash='#review/${g.id}'">Review</a></td></tr>`;
   }).join('')}</table>` : '<span class="mut">No games yet. Finish a game and it will show up here.</span>'}</div></div>`;
 }
 let GV = null;
@@ -790,7 +790,7 @@ function gvShow(n) {
   <div class="stat">${g.res === 'd' ? 'Draw' : g.res === g.me ? you + ' won' : (G.who ? esc(g.opp) + ' won' : 'You lost')}${g.why ? ' (' + esc(g.why) + ')' : ''} · ${g.mode} · ${g.tc}<br><span class="mut" style="font-weight:400">${new Date(g.date).toLocaleString()}</span></div>
   ${openingBox(g.op)}<div class="mv" style="max-height:300px"><table class="mvt">${rows}</table></div>
   <p class="mut" style="font-size:13px;margin:6px 0 0">The small number next to each move is the time that player had left after making it.</p>
-  <div class="row"><button class="chip" onclick="gvShow(0)">⏮</button><button class="chip" onclick="gvShow(GV.n-1)">◀</button><button class="chip" onclick="gvShow(GV.n+1)">▶</button><button class="chip" onclick="gvShow(GV.mv.length)">⏭</button><button class="chip" onclick="GV.B.flip=!GV.B.flip;GV.B.draw()">Flip board</button></div>`;
+  <div class="row"><button class="chip" onclick="gvShow(0)">⏮</button><button class="chip" onclick="gvShow(GV.n-1)">◀</button><button class="chip" onclick="gvShow(GV.n+1)">▶</button><button class="chip" onclick="gvShow(GV.mv.length)">⏭</button><button class="chip" onclick="GV.B.flip=!GV.B.flip;GV.B.draw()">Flip board</button>${G.who ? '' : `<a class="btn" style="margin:0;padding:8px 14px" href="#review/${g.id}">Review</a>`}</div>`;
 }
 addEventListener('keydown', e => { if (GV && location.hash.startsWith('#game/')) { if (e.key === 'ArrowLeft') gvShow(GV.n - 1); if (e.key === 'ArrowRight') gvShow(GV.n + 1); } });
 
@@ -799,7 +799,17 @@ const TITLES = [
   { k: 'CM', n: 'Candidate Master', elo: 2200 }, { k: 'TM', n: 'Terra Master', elo: 2400 },
   { k: 'IM', n: 'International Master', elo: 2500 }, { k: 'GM', n: 'Grandmaster', elo: 2800 }
 ];
-const titleOf = d => { let k = ''; for (const t of TITLES) if ((d.titles || []).includes(t.k)) k = t.k; return k; };   // highest title earned
+// A player's title is the word stored in the database under  titles / <username>  :  Nill, CM, TM, IM or GM.
+// Change that word in the Firebase console and the title changes on the site (no code needed).
+let MYT = '';   // my current title: '' (Nill), 'CM', 'TM', 'IM' or 'GM'
+const normT = w => { w = String(w == null ? '' : w).trim().toUpperCase(); return ['CM', 'TM', 'IM', 'GM'].includes(w) ? w : ''; };
+const legacyTitle = d => { let k = ''; for (const t of TITLES) if ((d.titles || []).includes(t.k)) k = t.k; return k; };
+const titleOf = d => (CUR && d === CUR.d) ? MYT : legacyTitle(d);
+async function loadMyTitle() {
+  if (!ME) return; if (!cloud) { MYT = legacyTitle(D()); return; }
+  try { let w = await api('titles/' + ME); if (w == null) { w = legacyTitle(D()) || 'Nill'; await api('titles/' + ME, 'PUT', w); } MYT = normT(w); } catch (e) {}
+}
+function setMyTitle(k) { MYT = k; if (cloud && ME) api('titles/' + ME, 'PUT', k).catch(() => {}); }
 let TM = {};
 function challenge(k) {
   const t = TITLES.find(x => x.k === k), d = D(); TM = {};
@@ -811,7 +821,7 @@ function challenge(k) {
 function titlesView() {
   const d = D();
   $('#app').innerHTML = `<div class="wrap"><h2>Titles</h2><p class="mut">Reach the Elo, then take on the title holder. Defeat the bot 3 times to earn the title. Your Elo: <b>${d.rating}</b></p><div class="grid">${TITLES.map(t => {
-    const have = (d.titles || []).includes(t.k), w = Math.min((d.tw || {})[t.k] || 0, 3), ok = d.rating >= t.elo, bot = BOTS.find(b => b.title === t.k);
+    const have = (d.titles || []).includes(t.k) || MYT === t.k, w = Math.min((d.tw || {})[t.k] || 0, 3), ok = d.rating >= t.elo, bot = BOTS.find(b => b.title === t.k);
     return `<div class="card"><h3>${tt(t.k)}${t.n}</h3><p class="mut">Opponent: ${tt(t.k)}${esc(bot.n)} · ${bot.r} Elo</p>
     <div style="display:flex;justify-content:space-between"><span>${ok ? '✓' : '○'} Reach ${t.elo} Elo</span><span class="mut">${d.rating}/${t.elo}</span></div><div class="bar"><i style="width:${Math.min(100, d.rating / t.elo * 100)}%"></i></div>
     <div style="display:flex;justify-content:space-between;margin-top:10px"><span>${w >= 3 ? '✓' : '○'} Defeat the bot 3 times</span><span class="mut">${w}/3</span></div><div class="bar"><i style="width:${w / 3 * 100}%"></i></div>
@@ -828,7 +838,7 @@ function pubPush() {   // publish my public profile (rating, title, recent games
 }
 function startPresence() {   // heartbeat: a player counts as online if seen in the last minute
   if (!cloud || PRES || !ME) return; pubPush();
-  const beat = () => { if (ME) api('roster/' + ME + '/seen', 'PUT', { '.sv': 'timestamp' }).then(v => { OFF = v - Date.now(); }).catch(() => {}); };
+  const beat = () => { if (ME) { api('roster/' + ME + '/seen', 'PUT', { '.sv': 'timestamp' }).then(v => { OFF = v - Date.now(); }).catch(() => {}); loadMyTitle(); } };
   beat(); PRES = setInterval(beat, 20000);
 }
 function stopPresence() { clearInterval(PRES); PRES = null; if (cloud && ME) api('roster/' + ME + '/seen', 'PUT', 0).catch(() => {}); }
@@ -840,6 +850,9 @@ async function roster() {
       out[id] = Object.assign(out[id] || {}, { u: u || id, r: rt || 800, t, seen: (out[id] || {}).seen || 0 });
       api('roster/' + id, 'PATCH', { u: u || id, r: rt || 800, t }).catch(() => {});
     }));
+    const tmap = (await api('titles')) || {};
+    Object.keys(keys || {}).forEach(id => { if (tmap[id] == null) { tmap[id] = 'Nill'; api('titles/' + id, 'PUT', 'Nill').catch(() => {}); } });
+    Object.keys(out).forEach(id => { if (tmap[id] != null) out[id].t = normT(tmap[id]); });
     return out;
   }
   const o = {}; for (const id in ACC) { const d = ACC[id].d || {}; o[id] = { u: ACC[id].u, r: d.rating || 800, t: titleOf(d), seen: id === ME ? snow() : 0 }; } return o;
@@ -848,6 +861,7 @@ async function getPlayer(id) {
   if (cloud) {
     let p = await api('players/' + id);
     if (!p) { const [u, d] = await Promise.all([api(`accounts/${id}/u`), api(`accounts/${id}/d`)]); if (!u) return null; p = { u, r: (d || {}).rating || 800, t: titleOf(d || {}), ti: (d || {}).titles || [], w: (d || {}).w || 0, peak: (d || {}).peak || (d || {}).rating || 800, h: ((d || {}).hist || []).slice(0, 15) }; }
+    const tw = await api('titles/' + id); if (tw != null) p.t = normT(tw);
     p.h = p.h || []; return p;
   }
   const a = ACC[id]; if (!a) return null; const d = a.d || {};
@@ -894,6 +908,106 @@ async function pgameView(arg) {
   gameView(gid, g, p.u, '#player/' + id);
 }
 
+/* ---------- Game review with Stockfish (like chess.com's review) ---------- */
+// Stockfish is loaded in a Web Worker. It tries your own copy first (stockfish/stockfish.js next to index.html), then public CDNs.
+const SF_URLS = ['stockfish/stockfish.js', 'https://cdn.jsdelivr.net/npm/stockfish@10.0.2/src/stockfish.js', 'https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/stockfish.js', 'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js'];
+const RV_CLS = ['brilliant', 'great', 'best', 'excellent', 'good', 'book', 'inaccuracy', 'mistake', 'miss', 'blunder'];
+const RV_TXT = { brilliant: 'a brilliant move', great: 'a great move', best: 'the best move', excellent: 'an excellent move', good: 'a good move', book: 'a book move', inaccuracy: 'an inaccuracy', mistake: 'a mistake', miss: 'a miss', blunder: 'a blunder' };
+const wp = cp => 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);   // win chance (%) from a centipawn score
+let SFW = null;
+function sfTry(u) {
+  return new Promise((res, rej) => {
+    let w; try { w = /^https?:/.test(u) ? new Worker(URL.createObjectURL(new Blob([`importScripts('${u}')`], { type: 'text/javascript' }))) : new Worker(u); } catch (e) { return rej(); }
+    const t = setTimeout(() => { w.terminate(); rej(); }, 20000);
+    w.onmessage = e => { if (String(e.data).includes('uciok')) { clearTimeout(t); w.onmessage = null; res(w); } };
+    w.onerror = () => { clearTimeout(t); w.terminate(); rej(); };
+    w.postMessage('uci');
+  });
+}
+async function sfGet() {
+  if (SFW) return SFW;
+  for (const u of SF_URLS) { try { SFW = await sfTry(u); SFW.postMessage('setoption name MultiPV value 2'); SFW.postMessage('isready'); return SFW; } catch (e) {} }
+  return null;
+}
+function sfEval(w, fen, ms) {   // returns Stockfish's top two lines (scores from the side to move) and its best move
+  return new Promise(res => {
+    const lines = {};
+    w.onmessage = e => {
+      const s = String(e.data);
+      if (s.startsWith('info') && s.includes(' score ')) {
+        const mp = +((s.match(/multipv (\d+)/) || [0, 1])[1]), sc = s.match(/score (cp|mate) (-?\d+)/), d = +((s.match(/depth (\d+)/) || [0, 0])[1]);
+        if (sc) lines[mp] = { d, cp: sc[1] === 'cp' ? +sc[2] : (+sc[2] > 0 ? 1 : -1) * (10000 - Math.min(Math.abs(+sc[2]), 100)) };
+      } else if (s.startsWith('bestmove')) res({ lines, best: s.split(' ')[1] });
+    };
+    w.postMessage('position fen ' + fen); w.postMessage('go movetime ' + ms);
+  });
+}
+function isSac(fen, san) {   // did the move give up material on purpose (a piece left to be captured for less than it is worth)?
+  const g = new Chess(fen), m = g.move(san, { sloppy: true }); if (!m || V[m.piece] < 300) return false;
+  const cv = m.captured ? V[m.captured] : 0; if (cv >= V[m.piece] - 50) return false;
+  const caps = g.moves({ verbose: true }).filter(x => x.to === m.to && x.captured); if (!caps.length) return false;
+  const x = caps.sort((a, b) => V[a.piece] - V[b.piece])[0]; g.move(x); const rec = g.moves({ verbose: true }).some(y => y.to === m.to && y.captured);
+  return cv - V[m.piece] + (rec ? V[x.piece] : 0) <= -200;
+}
+function inBook(sans) { openingOf([]); const h = sans.map(stripCk); return OPL.some(l => l.m.length >= h.length && h.every((s, i) => s === l.m[i])); }
+async function analyzeGame(rec, progress) {
+  const mv = rec.mv.split(' ').filter(Boolean), g = new Chess(), fens = [g.fen()], sans = [], played = [];
+  for (const s of mv) { const m = g.move(s, { sloppy: true }); if (!m) break; sans.push(m.san); played.push(m.from + m.to + (m.promotion || '')); fens.push(g.fen()); }
+  const w = await sfGet(); if (!w) throw 'nosf';
+  const ev = [], bestU = [], sec = [];
+  for (let i = 0; i < fens.length; i++) {
+    const c = new Chess(fens[i]), sg = c.turn() === 'w' ? 1 : -1; let cp = 0, b = null, s2 = null;
+    if (c.in_checkmate()) cp = -sg * 10000; else if (!c.game_over()) { const r = await sfEval(w, fens[i], 450); cp = r.lines[1] ? sg * r.lines[1].cp : 0; b = r.best; s2 = r.lines[2] ? sg * r.lines[2].cp : null; }
+    ev.push(cp); bestU.push(b); sec.push(s2); progress(i + 1, fens.length);
+  }
+  const cls = [], loss = [];
+  for (let i = 1; i <= sans.length; i++) {
+    const sg = i % 2 ? 1 : -1, before = wp(sg * ev[i - 1]), after = wp(sg * ev[i]), l = Math.max(0, before - after), isBest = played[i - 1] === bestU[i - 1], sw = sec[i - 1] == null ? null : wp(sg * sec[i - 1]); let k;
+    if (inBook(sans.slice(0, i))) k = 'book';
+    else if (isBest || l <= .5) {
+      k = 'best'; if (isBest && sw != null && before - sw >= 15 && before < 90) k = 'great';
+      if ((isBest || l <= 1.5) && after >= 45 && before < 92 && isSac(fens[i - 1], sans[i - 1])) k = 'brilliant';
+    } else if (l <= 2) k = 'excellent'; else if (l <= 5) k = 'good'; else if (l <= 10) k = 'inaccuracy';
+    else if (l <= 20) k = before >= 70 && after >= 35 ? 'miss' : 'mistake'; else k = before >= 75 && after >= 35 ? 'miss' : 'blunder';
+    cls.push(k); loss.push(l);
+  }
+  return { sans, fens, ev, bestU, cls, loss };
+}
+const accOf = (loss, par) => { const a = loss.filter((_, i) => i % 2 === par).map(l => Math.max(0, Math.min(100, 103.1668 * Math.exp(-0.04354 * l) - 3.1669))); return a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length * 10) / 10 : 0; };
+let RV = null;
+async function reviewView(id) {
+  const rec = (D().hist || []).find(x => x.id === id); if (!rec) { location.hash = '#history'; return; }
+  $('#app').innerHTML = layout(); const tok = RV = { rec, n: 0, data: null }; RV.B = Board($('#bd'), { g: new Chess(), can: () => false }); RV.B.flip = rec.me === 'b';
+  $('#pn').innerHTML = `<p style="margin:0"><a href="#history">← Game history</a></p><h2>Game review</h2><div class="stat" id="rvs">Starting Stockfish…</div><div class="bar"><i id="rvb" style="width:0"></i></div>`;
+  try {
+    let data = null; try { data = JSON.parse(localStorage.getItem('tc_rv_' + id) || 'null'); } catch (e) {}
+    if (!data) { data = await analyzeGame(rec, (i, n) => { if (RV === tok && $('#rvs')) { $('#rvs').textContent = `Stockfish is analysing the game… move ${i} of ${n}`; $('#rvb').style.width = i / n * 100 + '%'; } }); try { localStorage.setItem('tc_rv_' + id, JSON.stringify(data)); } catch (e) {} }
+    if (RV !== tok) return; RV.data = data; rvShow(data.sans.length);
+  } catch (e) {
+    if (RV === tok) $('#pn').innerHTML = `<p style="margin:0"><a href="#history">← Game history</a></p><h2>Game review</h2><div class="stat">Stockfish could not be loaded.</div><p>Download <b>stockfish.js</b> (for example from github.com/nmrugg/stockfish.js) and save it as <b>stockfish/stockfish.js</b> next to index.html, then reload this page.</p>`;
+  }
+}
+function rvShow(n) {
+  const R = RV, d = R.data, rec = R.rec; if (!d) return; R.n = Math.max(0, Math.min(d.sans.length, n)); n = R.n;
+  const g = new Chess(); let last = null; for (let k = 0; k < n; k++) { const m = g.move(d.sans[k], { sloppy: true }); last = m; }
+  const B = R.B; B.g = g; B.last = last && [last.from, last.to]; B.sel = null; B.marks = []; B.badge = n ? { sq: last.to, k: d.cls[n - 1] } : null; B.arrows = [];
+  if (n && ['inaccuracy', 'mistake', 'miss', 'blunder'].includes(d.cls[n - 1]) && d.bestU[n - 1]) B.arrows = [[d.bestU[n - 1].slice(0, 2), d.bestU[n - 1].slice(2, 4)]];
+  B.draw(); if (n) sound(last, g);
+  const names = { w: rec.me === 'w' ? CUR.u : rec.opp, b: rec.me === 'b' ? CUR.u : rec.opp }, cnt = { w: {}, b: {} };
+  d.cls.forEach((k, i) => { const c = i % 2 ? 'b' : 'w'; cnt[c][k] = (cnt[c][k] || 0) + 1; });
+  let fb = ''; if (n) { const k = d.cls[n - 1], bu = d.bestU[n - 1]; let bs = ''; try { const gg = new Chess(d.fens[n - 1]), m = gg.move({ from: bu.slice(0, 2), to: bu.slice(2, 4), promotion: bu[4] }); bs = m ? m.san : ''; } catch (e) {}
+    fb = `<div class="stat"><img class="mi" style="width:26px;height:26px" src="reviews/${k}.png" alt=""> ${esc(d.sans[n - 1])} is ${RV_TXT[k]}.${['inaccuracy', 'mistake', 'miss', 'blunder'].includes(k) && bs ? `<br><span style="font-weight:400">Best was <b>${esc(bs)}</b>.</span>` : ''}</div>`; }
+  const ev = d.ev[n], wpw = wp(ev), evTxt = Math.abs(ev) >= 9000 ? 'Mate' : (ev >= 0 ? '+' : '') + (ev / 100).toFixed(2);
+  let rows = ''; for (let i = 0; i < d.sans.length; i += 2) rows += `<tr><td class="mn">${i / 2 + 1}.</td>${[i, i + 1].map(k => k < d.sans.length ? `<td class="gm ${k === n - 1 ? 'cur' : ''}" onclick="rvShow(${k + 1})">${esc(d.sans[k])}<img class="mi" src="reviews/${d.cls[k]}.png" alt=""></td>` : '<td></td>').join('')}</tr>`;
+  $('#pn').innerHTML = `<p style="margin:0"><a href="#history">← Game history</a></p><h2>Game review</h2>
+  <div class="row" style="margin:6px 0"><div class="stat" style="flex:1;margin:0">⚪ ${esc(names.w)}<br><span style="font-size:22px">${accOf(d.loss, 0)}%</span> <span class="mut" style="font-weight:400;font-size:13px">accuracy</span></div><div class="stat" style="flex:1;margin:0">⚫ ${esc(names.b)}<br><span style="font-size:22px">${accOf(d.loss, 1)}%</span> <span class="mut" style="font-weight:400;font-size:13px">accuracy</span></div></div>
+  <div style="display:flex;height:14px;border-radius:7px;overflow:hidden;border:1px solid var(--line);margin:8px 0 2px"><div style="width:${wpw}%;background:#fff"></div><div style="flex:1;background:#2b3a5c"></div></div><div class="mut" style="font-size:13px">Evaluation: ${evTxt}</div>
+  ${fb}<div class="mv" style="max-height:230px"><table class="mvt">${rows}</table></div>
+  <div class="row"><button class="chip" onclick="rvShow(0)">⏮</button><button class="chip" onclick="rvShow(RV.n-1)">◀</button><button class="chip" onclick="rvShow(RV.n+1)">▶</button><button class="chip" onclick="rvShow(RV.data.sans.length)">⏭</button><button class="chip" onclick="RV.B.flip=!RV.B.flip;RV.B.draw()">Flip board</button></div>
+  <table class="ht" style="margin-top:12px"><tr><td></td><td class="mut">⚪</td><td class="mut">⚫</td></tr>${RV_CLS.filter(k => cnt.w[k] || cnt.b[k]).map(k => `<tr style="cursor:default"><td><img class="mi" style="margin:0 8px 0 0;width:20px;height:20px" src="reviews/${k}.png" alt="">${k[0].toUpperCase() + k.slice(1)}</td><td>${cnt.w[k] || 0}</td><td>${cnt.b[k] || 0}</td></tr>`).join('')}</table>`;
+}
+addEventListener('keydown', e => { if (RV && RV.data && location.hash.startsWith('#review/')) { if (e.key === 'ArrowLeft') rvShow(RV.n - 1); if (e.key === 'ArrowRight') rvShow(RV.n + 1); } });
+
 /* ---------- Home, profile, router ---------- */
 function homeView() {
   $('#app').innerHTML = `<div class="wrap"><h1 style="font-size:46px;color:var(--deep)">Learn chess. Play like a grandmaster.</h1>
@@ -906,7 +1020,7 @@ function profileView() {
   <p>${w} wins · ${dr} draws · ${d.games.length - w - dr} losses · ${d.pz.length}/${PZ.length} puzzles</p></div>
   <h3>Recent games</h3><div class="card">${d.games.length ? '<table>' + d.games.slice(0, 10).map(g => `<tr><td>${g.s === 1 ? 'Win' : g.s === .5 ? 'Draw' : 'Loss'}</td><td>vs ${g.b}</td><td>${Math.ceil(g.n / 2)} moves</td><td>${g.d >= 0 ? '+' : ''}${g.d}</td></tr>`).join('') + '</table>' : '<span class="mut">No games yet.</span>'}</div></div>`;
 }
-const VIEWS = { home: homeView, play: playView, puzzles: puzzleView, openings: openingsView, profile: profileView, online: onlineView, titles: titlesView, history: historyView, game: gameView, search: searchView, player: playerView, pgame: pgameView, login: () => authView(false), signup: () => authView(true) };
+const VIEWS = { home: homeView, play: playView, puzzles: puzzleView, openings: openingsView, profile: profileView, online: onlineView, titles: titlesView, history: historyView, game: gameView, review: reviewView, search: searchView, player: playerView, pgame: pgameView, login: () => authView(false), signup: () => authView(true) };
 const NAV = [['play', 'Play'], ['online', 'Online'], ['puzzles', 'Puzzles'], ['openings', 'Openings'], ['history', 'History'], ['titles', 'Titles'], ['search', 'Search'], ['profile', 'Profile']];
 function route() {
   speechSynthesis.cancel(); stopOnline(); clearInterval(SR);
@@ -916,8 +1030,8 @@ function route() {
   let k = location.hash.slice(1), arg = null; const sl = k.indexOf('/'); if (sl > 0) { arg = k.slice(sl + 1); k = k.slice(0, sl); } if (!VIEWS[k]) k = 'home';
   if (!ME && k !== 'login' && k !== 'signup') { location.hash = '#login'; return; }   // everything needs an account
   if (ME && !CUR) return logout();
-  document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + (k === 'game' ? 'history' : ['search', 'player', 'pgame'].includes(k) ? 'search' : k)));
+  document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + (k === 'game' || k === 'review' ? 'history' : ['search', 'player', 'pgame'].includes(k) ? 'search' : k)));
   startPresence(); VIEWS[k](arg); scrollTo(0, 0);
 }
 addEventListener('hashchange', route);
-(async () => { if (ME) { try { CUR = await getAcc(ME); } catch (e) {} if (!CUR) ME = null; } route(); })();
+(async () => { if (ME) { try { CUR = await getAcc(ME); } catch (e) {} if (!CUR) ME = null; else await loadMyTitle(); } route(); })();
