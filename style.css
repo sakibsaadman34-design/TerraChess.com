@@ -87,3 +87,6 @@ table{border-collapse:collapse;width:100%}td{padding:6px 8px;border-bottom:1px s
 
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#9aa7c2;margin-right:8px}.dot.on{background:#22c55e}
 
+/* game review */
+.bdg{position:absolute;top:3%;right:3%;width:38%;height:38%;z-index:5;pointer-events:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
+.mi{width:17px;height:17px;vertical-align:-3px;margin-left:5px}
