@@ -1,6 +1,7 @@
 /* ===== TerraChess: script.js ===== */
 const $ = s => document.querySelector(s);
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const EMO = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu;   // emojis are stripped from everything shown (usernames included)
+const esc = s => String(s ?? '').replace(EMO, '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /* ---------- Accounts ---------- */
 // MAKE ACCOUNTS WORK IN EVERY BROWSER: create a free Firebase project -> Build -> Realtime Database -> "Create database"
@@ -45,7 +46,7 @@ async function doSignup() {
   $('#go').disabled = true;
   try {
     if (await getAcc(id)) return msg('Sorry, that username is already taken.');
-    const salt = hex(crypto.getRandomValues(new Uint8Array(16))), a = { u: n, salt, hash: await hashPw(p, salt), d: { rating: 800, games: [], pz: [] } };
+    const salt = hex(crypto.getRandomValues(new Uint8Array(16))), a = { u: n, salt, joined: Date.now(), hash: await hashPw(p, salt), d: { rating: 800, games: [], pz: [] } };
     await putAcc(id, a); enter(id, a);
   } catch (e) { msg('Could not reach the account database. Please try again.'); }
 }
@@ -113,9 +114,9 @@ function Board(el, o) {
     const g = B.g, bd = g.board(), ck = g.in_check() ? g.turn() : null, tg = B.sel ? B.targets(B.sel) : []; let h = '';
     for (let i = 0; i < 64; i++) {
       const r = B.flip ? 7 - (i >> 3) : i >> 3, c = B.flip ? 7 - (i & 7) : i & 7, s = nm(r, c), p = bd[r][c]; let k = 'sq ' + ((r + c) % 2 ? 'dk' : 'lt');
-      if (s === B.sel) k += ' sel'; if (B.last && B.last.includes(s)) k += ' last'; if (p && p.type === 'k' && p.color === ck) k += ' chk';
+      if (s === B.sel) k += ' sel'; if (B.last && B.last.includes(s) && !B.badge) k += ' last'; if (B.badge && B.badge.sq === s) k += ' rvt'; else if (B.badge && B.badge.from === s) k += ' rvf'; if (p && p.type === 'k' && p.color === ck) k += ' chk';
       if (B.marks.includes(s)) k += ' red'; if (B.pre.some(m => m.from === s || m.to === s)) k += ' pre';
-      h += `<div class="${k}" data-s="${s}">${tg.includes(s) ? `<i class="${p ? 'cap' : 'dot'}"></i>` : ''}${p ? `<b class="${p.color}">${pieceImg(p.color, p.type)}</b>` : ''}${B.badge && B.badge.sq === s ? `<img class="bdg" src="reviews/${B.badge.k}.png" alt="">` : ''}</div>`;
+      h += `<div class="${k}" data-s="${s}"${B.badge && (B.badge.sq === s || B.badge.from === s) ? ` style="--rc:${B.badge.col}"` : ''}>${tg.includes(s) ? `<i class="${p ? 'cap' : 'dot'}"></i>` : ''}${p ? `<b class="${p.color}">${pieceImg(p.color, p.type)}</b>` : ''}${B.badge && B.badge.sq === s ? `<img class="bdg" src="reviews/${B.badge.k}.png" alt="">` : ''}</div>`;
     }
     el.innerHTML = h + B.svg(); B.fx();
   };
@@ -379,6 +380,36 @@ const SOLID = {   // solid repertoires (names from the Openings tab) that the bo
   m: { plies: 20, w: ['Queen’s Gambit', 'London System', 'Italian Game', 'Ruy Lopez', 'Catalan', 'English Opening', 'Réti Opening'], b: ['Caro-Kann', 'Queen’s Gambit', 'French Defense', 'Petrov Defense', 'Nimzo-Indian', 'Scandinavian'] },
   x: { plies: 24, w: null, b: null }
 };
+// Witty_Alien (CM Volen Dyulgerov): the streamer who invented the Alien Gambit and the Martian Gambit. He plays sharp gambits and always answers the Caro-Kann with one of them.
+// Edit these lines (written in standard notation) to change his openings.
+const ALIEN_LINES = {
+  w: [   // when he has the white pieces (he always opens 1.e4)
+    'e4 c6 d4 d5 Nc3 dxe4 Nxe4 Nf6 Ng5 h6 Nxf7 Kxf7 Nf3 c5 Bc4+ e6 dxc5',          // Alien Gambit (1.e4 c6 2.d4 d5 3.Nc3 dxe4 4.Nxe4 Nf6 5.Ng5 h6 6.Nxf7)
+    'e4 c6 d4 d5 Nd2 dxe4 Nxe4 Nf6 Ng5 h6 Nxf7 Kxf7 Nf3 c5 Bc4+ e6 dxc5',          // Alien Gambit with 3.Nd2 (his favourite move order)
+    'e4 c6 d4 d5 Nc3 dxe4 Nxe4 Nf6 Ng5 h6 Nxf7 Kxf7 Nf3 Bf5 Ne5+ Kg8 Bc4+ e6 g4',  // Alien Gambit, 7...Bf5
+    'e4 c6 d4 d5 Nc3 dxe4 Nxe4 Nf6 Ng5 h6 Nxf7 Kxf7 Nf3 e6',                       // Alien Gambit, 7...e6
+    'e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng5 Bg6 N1f3 h6 Ne6',                            // Martian Gambit (against 4...Bf5)
+    'e4 e5 Nf3 Nc6 Bc4 Bc5 b4 Bxb4 c3 Ba5 d4 exd4 O-O',                              // Evans Gambit
+    'e4 e5 f4 exf4 Nf3 g5 h4 g4 Ne5 Nf6',                                            // King's Gambit
+    'e4 e5 Nf3 Nc6 d4 exd4 Bc4 Nf6 O-O Nxe4 Re1 d5 Bxd5 Qxd5 Nc3 Qa5',               // Scotch Gambit
+    'e4 e6 d4 d5 Nc3 Bb4 e5 c5 a3 Bxc3+ bxc3 Ne7',                                   // Winawer
+    'e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Be3 Bg7 f3 O-O Qd2 Nc6'                    // Dragon, Yugoslav Attack
+  ],
+  b: [   // when he has the black pieces
+    'e4 e5 Nf3 d5 exd5 e4 Qe2 Nf6',                                                  // Elephant Gambit
+    'e4 e5 Nf3 d5 Nxe5 dxe4',                                                        // Elephant Gambit, 3.Nxe5
+    'd4 d5 c4 e5 dxe5 d4 Nf3 Nc6 g3 Be6'                                             // Albin Counter-Gambit
+  ]
+};
+const ALIEN_SAY = {
+  start: ['Welcome to the Spaceship, Earthling! Like, subscribe, and prepare to lose your king.', 'Greetings from the Witty Aliens club. Today I will beam your pieces off the board.', 'As I always say, chess is a practical game. It is played by humans, not computers.', 'The pony goes to the center, and the Earthling goes home.'],
+  move: ['Calculated in three dimensions.', 'On my home planet, this move is called Tuesday.', 'Fascinating. Your pieces look nervous.', 'Do not worry, this is all part of the plan. I think.', 'The pony likes this square. Do not ask me why.', 'My ship computer says this is winning. It also says it wants snacks.'],
+  cap: ['Delicious. Tastes like pawn.', 'Thank you for the free sample, Earthling.', 'I will be taking that, for science.', 'Chess is a practical game, and practically, that piece is mine.'],
+  check: ['Check! Even my tentacles can see that one.', 'Your king appears to be in the spotlight.', 'Knock knock. It is your king\'s evil landlord.'],
+  win: ['Another victory for the Alien Gambit. Do not forget to subscribe on your way out!', 'Good game, Earthling. I will edit this into a highlight reel.', 'Resistance was futile, but entertaining.'],
+  lose: ['Impossible! Fine, you win this round. I blame Earth gravity.', 'Well played. I will cut this from the video.', 'My ship computer demands a rematch.'],
+  draw: ['A draw. Peace between our planets, for now.', 'Equal on both planets. I will take it.']
+};
 const BOTS = [
   { n: 'Starter', r: 100, rand: 1 },                                   // random moves
   { n: 'Beginner', r: 500, rand: 2 },                                  // random moves (likes a capture now and then)
@@ -386,12 +417,13 @@ const BOTS = [
   { n: 'Advanced', r: 1500, d: 4, noise: 20, blun: .025, t: 1500, pr: 1, adv: 1, book: SOLID.a },                            // sees tactical patterns
   { n: 'Master', r: 2000, d: 6, blun: .008, t: 2000, pr: 1, adv: 1, atk: 1, book: SOLID.m },                                  // solid openings, sees sacrifices
   { n: 'International Master', r: 2500, d: 8, blun: .002, t: 3000, pr: 1, adv: 1, atk: 1.5, book: SOLID.x },                  // deep calculation
+  { n: 'Witty_Alien', title: 'CM', r: 2200, d: 9, blun: .004, t: 3500, pr: 1, adv: 1, atk: 2.6, lines: ALIEN_LINES, say: ALIEN_SAY },   // witty, aggressive, accurate, rarely blunders
   { n: 'Grandmaster', r: 3000, d: 30, blun: .0003, t: 5000, pr: 1, adv: 1, atk: 2, book: SOLID.x },
   // title-challenge opponents (not shown in the normal bot list)
-  { n: 'Candidate Master Bot', title: 'CM', r: 2200, d: 7, blun: .005, t: 2500, pr: 1, adv: 1, atk: 1, book: SOLID.m },
-  { n: 'Terra Master Bot', title: 'TM', r: 2400, d: 9, blun: .003, t: 3200, pr: 1, adv: 1, atk: 1.3, book: SOLID.x },
-  { n: 'International Master Bot', title: 'IM', r: 2500, d: 10, blun: .002, t: 3800, pr: 1, adv: 1, atk: 1.5, book: SOLID.x },
-  { n: 'Grandmaster Bot', title: 'GM', r: 2800, d: 30, blun: .0004, t: 5000, pr: 1, adv: 1, atk: 2, book: SOLID.x }                             // deepest calculation, almost never blunders
+  { n: 'Candidate Master Bot', chal: 1, title: 'CM', r: 2200, d: 7, blun: .005, t: 2500, pr: 1, adv: 1, atk: 1, book: SOLID.m },
+  { n: 'Terra Master Bot', chal: 1, title: 'TM', r: 2400, d: 9, blun: .003, t: 3200, pr: 1, adv: 1, atk: 1.3, book: SOLID.x },
+  { n: 'International Master Bot', chal: 1, title: 'IM', r: 2500, d: 10, blun: .002, t: 3800, pr: 1, adv: 1, atk: 1.5, book: SOLID.x },
+  { n: 'Grandmaster Bot', chal: 1, title: 'GM', r: 2800, d: 30, blun: .0004, t: 5000, pr: 1, adv: 1, atk: 2, book: SOLID.x }                             // deepest calculation, almost never blunders
 ];
 const TCS = [[1, 0], [2, 0], [3, 0], [3, 2], [5, 0], [5, 3], [10, 0], [10, 5], [15, 0], [15, 10], [30, 0]]
   .map(a => ({ m: a[0], inc: a[1], l: a[1] ? `${a[0]} + ${a[1]} Minute` : `${a[0]} Minute` }));
@@ -407,7 +439,7 @@ function openingOf(hist) {   // finds which opening from the Openings list the g
   if (c.length > 1) return names[0];
   const v = c[0].v; return `${c[0].o}: ${v}${/Gambit|Attack|Variation|Line|System|Defen[cs]e|Opening|Game|Defence/i.test(v) ? '' : ' Variation'}`;
 }
-const openingBox = n => n ? `<div class="obox">📖 ${esc(n)}</div>` : '';
+const openingBox = n => n ? `<div class="obox">Opening: ${esc(n)}</div>` : '';
 function movesHtml(hs) {
   let r = ''; for (let i = 0; i < hs.length; i += 2) r += `<tr><td class="mn">${i / 2 + 1}.</td><td${i === hs.length - 1 ? ' class="cur"' : ''}>${hs[i]}</td><td${i + 1 === hs.length - 1 ? ' class="cur"' : ''}>${hs[i + 1] || ''}</td></tr>`;
   return `<table class="mvt">${r || '<tr><td class="mut">No moves yet.</td></tr>'}</table>`;
@@ -416,6 +448,7 @@ function movesHtml(hs) {
 /* ---------- Play ---------- */
 let P = { g: new Chess(), me: 'w', pick: 'w', bot: 2, tcI: 6, on: false, over: false, think: false, msg: '' };
 function playView() {
+  if (P.mode === 'person') { personView(); return; }
   $('#app').innerHTML = layout();
   P.B = Board($('#bd'), { g: P.g, can: c => P.on && !P.think && c === P.me, me: () => P.on ? P.me : null, onMove: () => { clockMove(P.me); if (!endCheck()) { status(); botMove(); } } });
   P.B.flip = P.me === 'b'; P.B.draw(); panel(); if (P.auto) { P.auto = false; startGame(); }
@@ -426,8 +459,8 @@ const clockBox = (c, name) => `<div class="clk ${P.on && P.g.turn() === c ? 'act
 function panel() {
   const el = $('#pn'); if (!el) return;
   if (!P.on && !P.over) {
-    el.innerHTML = `<h2>Play</h2><p class="mut">Your Elo: <b>${D().rating}</b></p>` +
-      BOTS.map((b, i) => b.title ? '' : `<button class="opt ${P.bot == i ? 'on' : ''}" onclick="P.bot=${i};panel()"><b>${b.n}</b><span>${b.r} Elo</span></button>`).join('') +
+    el.innerHTML = `<h2>Play</h2><div class="chips" style="margin:0 0 8px"><button class="chip on">Play a bot</button><button class="chip" onclick="P.mode='person';playView()">Play in person</button></div><p class="mut">Your Elo: <b>${D().rating}</b></p>` +
+      BOTS.map((b, i) => b.chal ? '' : `<button class="opt ${P.bot == i ? 'on' : ''}" onclick="P.bot=${i};panel()"><b>${tt(b.title)}${b.n}</b><span>${b.r} Elo</span></button>`).join('') +
       `<div class="row">${['w', 'r', 'b'].map(c => `<button class="chip ${P.pick == c ? 'on' : ''}" onclick="P.pick='${c}';panel()">${{ w: 'White', r: 'Random', b: 'Black' }[c]}</button>`).join('')}</div>
       <h3>Time control</h3><div class="chips">${TCS.map((t, i) => `<button class="chip ${P.tcI == i ? 'on' : ''}" onclick="P.tcI=${i};panel()">${t.l}</button>`).join('')}</div>
       <button class="btn" onclick="startGame()">Start game</button>`;
@@ -436,14 +469,14 @@ function panel() {
   const opp = P.me === 'w' ? 'b' : 'w', hs = P.g.history(); let mv = '';
   for (let i = 0; i < hs.length; i += 2) mv += `<span class="mut">${i / 2 + 1}.</span> ${hs[i]} ${hs[i + 1] || ''} `;
   el.innerHTML = `<h2>vs ${tt(BOTS[P.bot].title)}${BOTS[P.bot].n} <span class="mut" style="font-size:16px">${P.tc.l}</span></h2>${clockBox(opp, tt(BOTS[P.bot].title) + esc(BOTS[P.bot].n))}${clockBox(P.me, tt(titleOf(D())) + esc(CUR.u))}
-    <div class="stat">${P.msg}</div>${openingBox((P.openName = openingOf(hs) || P.openName))}<div class="mv">${movesHtml(hs)}</div>
+    <div class="stat">${P.msg}</div>${P.say ? `<div class="say"><b>${esc(BOTS[P.bot].n.split(' ')[0])}:</b> ${esc(P.say)}</div>` : ''}${openingBox((P.openName = openingOf(hs) || P.openName))}<div class="mv">${movesHtml(hs)}</div>
     <div class="row"><button class="chip" onclick="P.B.flip=!P.B.flip;P.B.draw()">Flip board</button>
     ${P.on ? `<button class="chip" onclick="finish('${opp}')">Resign</button>` : `<button class="btn" style="margin:0" onclick="P.over=false;panel()">New game</button>`}</div>`;
 }
 function startGame() {
   killWorker();
   P.me = P.pick === 'r' ? (Math.random() < .5 ? 'w' : 'b') : P.pick; P.g = new Chess(); P.B.g = P.g; P.B.last = null; P.B.pre = []; P.B.marks = []; P.B.arrows = []; P.B.flip = P.me === 'b';
-  P.tc = TCS[P.tcI]; P.earned = null; P.openName = null; P.tl = []; P.clk = { w: P.tc.m * 60000, b: P.tc.m * 60000 }; P.ts = Date.now(); P.on = true; P.over = false; P.think = false; P.tok = (P.tok || 0) + 1;
+  P.tc = TCS[P.tcI]; P.say = BOTS[P.bot].say ? pick(BOTS[P.bot].say.start) : ''; P.earned = null; P.openName = null; P.tl = []; P.clk = { w: P.tc.m * 60000, b: P.tc.m * 60000 }; P.ts = Date.now(); P.on = true; P.over = false; P.think = false; P.tok = (P.tok || 0) + 1;
   clearInterval(P.iv); P.iv = setInterval(tick, 200); P.B.draw(); status(); if (P.me === 'b') botMove();
 }
 function status() { P.msg = (P.g.in_check() ? 'Check! ' : '') + (P.g.turn() === P.me ? 'Your move.' : 'Thinking…'); panel(); }
@@ -473,8 +506,17 @@ function askBot(moves, bot) {
     const id = ++wid; wait[id] = res; w.postMessage({ id, moves, bot });
   });
 }
+function quip(b, mv) {   // the alien's running commentary
+  if (!b.say || P.g.in_checkmate()) return; const r = Math.random();
+  if (P.g.in_check() && r < .7) P.say = pick(b.say.check); else if (mv.captured && r < .45) P.say = pick(b.say.cap); else if (r < .2) P.say = pick(b.say.move);
+}
 function bookMove(bot) {   // plays the bot's solid opening lines while the game follows them
-  const bk = bot.book, h = P.g.history().map(stripCk); if (!bk || h.length >= bk.plies) return null; openingOf([]);
+  const h = P.g.history().map(stripCk);
+  if (bot.lines) {   // the bot's own repertoire
+    const c = []; for (const ln of bot.lines[h.length % 2 ? 'b' : 'w']) { const a = ln.split(' '); if (a.length > h.length && h.every((s, i) => s === a[i])) c.push(a[h.length]); }
+    if (c.length) { const s = c[Math.random() * c.length | 0], m = P.g.moves({ verbose: true }).find(x => stripCk(x.san) === s); if (m) return m.from + m.to + (m.promotion || ''); }
+  }
+  const bk = bot.book; if (!bk || h.length >= bk.plies) return null; openingOf([]);
   const names = bk[h.length % 2 ? 'b' : 'w'], c = [];
   for (const l of OPL) if ((!names || names.includes(l.o)) && l.m.length > h.length && h.every((s, i) => s === l.m[i])) c.push(l.m[h.length]);
   if (!c.length) return null; const s = c[Math.random() * c.length | 0], m = P.g.moves({ verbose: true }).find(x => stripCk(x.san) === s);
@@ -488,18 +530,19 @@ function botMove() {
     P.think = false; let pick = ms.find(x => x.from + x.to + (x.promotion || '') === m);
     if (!pick) { const caps = ms.filter(x => x.captured); pick = B0.rand === 2 && caps.length && Math.random() < .35 ? caps[Math.random() * caps.length | 0] : ms[Math.random() * ms.length | 0]; }
     const mv = P.g.move(pick);
-    clockMove(bc); P.B.play(mv); if (!endCheck()) { status(); setTimeout(() => P.B.autoPre(), 150); }       // then play your premove, if any
+    clockMove(bc); P.B.play(mv); quip(B0, mv); if (!endCheck()) { status(); setTimeout(() => P.B.autoPre(), 150); }       // then play your premove, if any
   }, Math.max(0, Math.min(1000, left / 30) - (Date.now() - t0))));
 }
 function endCheck() { if (P.g.game_over()) { finish(P.g.in_checkmate() ? (P.g.turn() === 'w' ? 'b' : 'w') : 'd'); return true; } return false; }
 function finish(w, why) {
   if (!P.on) return; P.on = false; P.over = true; P.think = false; killWorker(); P.tok++; clearInterval(P.iv); P.B.pre = [];
   const bt = BOTS[P.bot], d = D(), sc = w === 'd' ? .5 : w === P.me ? 1 : 0, E = 1 / (1 + 10 ** ((bt.r - d.rating) / 400)), delta = Math.round(32 * (sc - E));
-  d.rating += delta; d.peak = Math.max(d.peak || 0, d.rating); if (sc === 1 && bt.title) { d.tw = d.tw || {}; d.titles = d.titles || []; d.tw[bt.title] = (d.tw[bt.title] || 0) + 1; if (d.tw[bt.title] >= 3 && !d.titles.includes(bt.title)) { d.titles.push(bt.title); P.earned = bt.title; setMyTitle(bt.title); } }
+  d.rating += delta; d.peak = Math.max(d.peak || 0, d.rating); if (sc === 1 && bt.chal) { d.tw = d.tw || {}; d.titles = d.titles || []; d.tw[bt.title] = (d.tw[bt.title] || 0) + 1; if (d.tw[bt.title] >= 3 && !d.titles.includes(bt.title)) { d.titles.push(bt.title); P.earned = bt.title; setMyTitle(bt.title); } }
   if (sc === 1) { d.w = (d.w || 0) + 1; d.beat = d.beat || {}; d.beat[bt.n] = (d.beat[bt.n] || 0) + 1; } d.games.unshift({ s: sc, b: bt.n, d: delta, n: P.g.history().length }); d.games = d.games.slice(0, 40);
   saveGame({ mode: 'Bot', opp: bt.n, oppR: bt.r, me: P.me, res: w, why: why || '', tc: P.tc.l, mv: P.g.history().join(' '), tl: (P.tl || []).join(' '), op: P.openName || '', delta }); persist();
   P.msg = (sc === 1 ? 'You won' : sc === .5 ? 'Draw' : 'You lost') + (why ? ' ' + why : '') + `. Elo ${delta >= 0 ? '+' : ''}${delta} → ${d.rating}`;
-  if (bt.title && sc === 1) P.msg += P.earned ? ` 🏅 You earned the ${P.earned} title!` : ` Progress: ${d.tw[bt.title]}/3.`; P.earned = null;
+  if (bt.chal && sc === 1) P.msg += P.earned ? ` You earned the ${P.earned} title!` : ` Progress: ${d.tw[bt.title]}/3.`; P.earned = null;
+  if (BOTS[P.bot].say) P.say = pick(BOTS[P.bot].say[sc === 1 ? 'lose' : sc === .5 ? 'draw' : 'win']);
   panel();
 }
 
@@ -646,23 +689,125 @@ const OP = [
     'Four Pawns Attack|d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 f4 O-O Nf3 c5 d5 e6', 'Averbakh|d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Be2 O-O Bg5 c5 d5 e6', 'Petrosian|d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O Be2 e5 d5 a5 Bg5 h6'),
   o('Nimzo-Indian', 'b', 'Black pins the knight on c3 to fight for control of e4.',
     'Rubinstein|d4 Nf6 c4 e6 Nc3 Bb4 e3 O-O Bd3 d5 Nf3 c5 O-O Nc6', 'Classical (4.Qc2)|d4 Nf6 c4 e6 Nc3 Bb4 Qc2 O-O a3 Bxc3+ Qxc3 b6 Bg5 Bb7', 'Sämisch|d4 Nf6 c4 e6 Nc3 Bb4 a3 Bxc3+ bxc3 c5 e3 Nc6 Bd3 O-O',
-    'Leningrad|d4 Nf6 c4 e6 Nc3 Bb4 Bg5 h6 Bh4 c5 d5 d6 e3 exd5 cxd5 g5', 'Kasparov (4.Nf3)|d4 Nf6 c4 e6 Nc3 Bb4 Nf3 c5 e3 Nc6 Bd3 Bxc3+ bxc3 d6', 'Hübner|d4 Nf6 c4 e6 Nc3 Bb4 e3 c5 Bd3 Nc6 Nf3 Bxc3+ bxc3 d6')
+    'Leningrad|d4 Nf6 c4 e6 Nc3 Bb4 Bg5 h6 Bh4 c5 d5 d6 e3 exd5 cxd5 g5', 'Kasparov (4.Nf3)|d4 Nf6 c4 e6 Nc3 Bb4 Nf3 c5 e3 Nc6 Bd3 Bxc3+ bxc3 d6', 'Hübner|d4 Nf6 c4 e6 Nc3 Bb4 e3 c5 Bd3 Nc6 Nf3 Bxc3+ bxc3 d6'),
+  o('Alien Gambit', 'w', 'Invented by streamer Witty_Alien: against the Caro-Kann, White sacrifices a knight on f7 to drag the black king out and wreck the kingside.',
+    'Main line (7…c5)|e4 c6 d4 d5 Nc3 dxe4 Nxe4 Nf6 Ng5 h6 Nxf7 Kxf7 Nf3 c5 Bc4+ e6 dxc5', '3.Nd2 move order|e4 c6 d4 d5 Nd2 dxe4 Nxe4 Nf6 Ng5 h6 Nxf7 Kxf7 Nf3 c5 Bc4+ e6 dxc5', '7…Bf5|e4 c6 d4 d5 Nc3 dxe4 Nxe4 Nf6 Ng5 h6 Nxf7 Kxf7 Nf3 Bf5 Ne5+ Kg8 Bc4+ e6 g4',
+    '7…e6|e4 c6 d4 d5 Nc3 dxe4 Nxe4 Nf6 Ng5 h6 Nxf7 Kxf7 Nf3 e6 Ne5+ Kg7 Bc4', '7…Bg4|e4 c6 d4 d5 Nc3 dxe4 Nxe4 Nf6 Ng5 h6 Nxf7 Kxf7 Nf3 Bg4 Ne5+ Kg8 Bc4+ e6 Nxg4 Nxg4'),
+  o('Martian Gambit', 'w', 'Another Witty_Alien invention against the Caro-Kann: after 4…Bf5 White throws the knights forward to attack the weak light squares around the black king.',
+    'Main line|e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng5 Bg6 N1f3 h6 Ne6', '…Qd7|e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng5 Bg6 N1f3 h6 Ne6 Qd7 Nxf8 Kxf8 Bd3 Bxd3 Qxd3', '…fxe6|e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng5 Bg6 N1f3 h6 Ne6 fxe6 Bc4 Nf6 Bxe6 Qd7',
+    '6…Nd7|e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng5 Bg6 N1f3 Nd7 Bc4 e6 Qe2 Ngf6', '6…e6|e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng5 Bg6 N1f3 e6 Bd3 Bxd3 Qxd3 h6 Ne4'),
+  o('Elephant Gambit', 'b', 'Black answers 1.e4 e5 2.Nf3 with the pawn thrust 2…d5, challenging the centre at once and accepting a messy fight.',
+    'Main line|e4 e5 Nf3 d5 exd5 e4 Qe2 Nf6 d3 Bd6', '3.Nxe5|e4 e5 Nf3 d5 Nxe5 dxe4 Nc3 Nf6 Nxe4 Bd6', '3.Nxe5 Nc6|e4 e5 Nf3 d5 Nxe5 Nc6 Nxc6 bxc6 d3 Nf6',
+    '3.Nc3|e4 e5 Nf3 d5 Nc3 dxe4 Nxe5 Nf6 Bc4 Bd6', '4.Nd4|e4 e5 Nf3 d5 exd5 e4 Nd4 Qxd5 Nc3 Qe5 Qe2 Nf6'),
+  o('Danish Gambit', 'w', 'White gives up two pawns for a huge lead in development and a strong pair of bishops aimed at the black king.',
+    'Accepted|e4 e5 d4 exd4 c3 dxc3 Bc4 cxb2 Bxb2', 'Declined (3…d5)|e4 e5 d4 exd4 c3 d5 exd5 Qxd5 cxd4 Nc6', '3…Nf6|e4 e5 d4 exd4 c3 Nf6 e5 Ne4 Bd3 d5 exd6 Nxd6 cxd4 Bf5',
+    '4…Nc6|e4 e5 d4 exd4 c3 dxc3 Nxc3 Nc6 Bc4 Bb4 Nge2 Nf6', 'Queen trap|e4 e5 d4 exd4 c3 dxc3 Bc4 cxb2 Bxb2 d5 Bxd5 Nf6 Bxf7+ Kxf7 Qxd8 Bb4+'),
+  o('Blackmar-Diemer Gambit', 'w', 'White offers the e-pawn for rapid development and a fast kingside attack down the half-open f-file.',
+    'Ryder|d4 d5 e4 dxe4 Nc3 Nf6 f3 exf3 Nxf3 Bg4 h3 Bxf3 Qxf3 e6 Bd3', 'Euwe (4…e5)|d4 d5 e4 dxe4 Nc3 Nf6 f3 e5 dxe5 Qxd1+ Kxd1 Ng4 Bf4 Nc6', 'Bg5 Variation|d4 d5 e4 dxe4 Nc3 Nf6 Bg5 Bf5 g4 Bg6 Nge2 Nbd7',
+    'Main line|d4 d5 e4 dxe4 Nc3 Nf6 f3 exf3 Qxf3 e6 Bg5 Be7 O-O-O O-O', 'Teichmann|d4 d5 e4 dxe4 Nc3 Nf6 Bg5 Nbd7 f3 exf3 Qxf3 e6 O-O-O'),
+  o('Smith-Morra Gambit', 'w', 'Against the Sicilian, White sacrifices the c-pawn for fast development and open lines against the black king.',
+    'Main line|e4 c5 d4 cxd4 c3 dxc3 Nxc3 Nc6 Nf3 d6 Bc4 e6 O-O Nf6 Qe2 Be7 Rd1 e5', 'With Qb3|e4 c5 d4 cxd4 c3 dxc3 Nxc3 d6 Bc4 Nf6 Qb3 e6 Nf3 Nc6', '3…Nf6|e4 c5 d4 cxd4 c3 Nf6 e5 Nd5 cxd4 e6 Nf3 Nc6 Bc4 Nb6',
+    '3…d5|e4 c5 d4 cxd4 c3 d5 exd5 Qxd5 cxd4 Nf6 Nc3 Qd8 Nf3 e6', 'Nc6 line|e4 c5 d4 cxd4 c3 dxc3 Nxc3 Nc6 Nf3 e6 Bc4 a6 O-O Nge7 Qe2 Ng6'),
+  o('Budapest Gambit', 'b', 'Black answers 1.d4 Nf6 2.c4 with 2…e5, giving a pawn for quick piece play and attacking chances.',
+    'Adler|d4 Nf6 c4 e5 dxe5 Ng4 Bf4 Nc6 Nf3 Bb4+ Nbd2 Qe7 e3 Ngxe5', 'Main line (Qd5)|d4 Nf6 c4 e5 dxe5 Ng4 Nf3 Nc6 Bf4 Bb4+ Nc3 Qe7 Qd5 Bxc3+ bxc3 f6', 'Rubinstein|d4 Nf6 c4 e5 dxe5 Ng4 Bf4 Nc6 Nf3 Bb4+ Nbd2 Qe7 a3 Ngxe5 axb4 Nxf3+ gxf3 Qxb4',
+    'Fajarowicz|d4 Nf6 c4 e5 dxe5 Ne4 Nf3 d6 exd6 Bxd6 Nc3 Nxc3 bxc3 O-O', 'Bf4 line|d4 Nf6 c4 e5 dxe5 Ng4 Bf4 Bb4+ Nd2 Nc6 a3 Ngxe5 axb4 Nxc4'),
+  o('Englund Gambit', 'b', 'A tricky pawn sacrifice against 1.d4: Black plays 1…e5 hoping White falls into the many traps that follow.',
+    'Main line|d4 e5 dxe5 Nc6 Nf3 Qe7 Bf4 Qb4+ Bd2 Qxb2 Bc3 Bb4', 'Soller Gambit|d4 e5 dxe5 Nc6 Nf3 Qe7 Qd5 f6 exf6 Nxf6 Qb5 Qb4+', 'Hartlaub|d4 e5 dxe5 d6 exd6 Bxd6 Nf3 Nf6 Nc3 O-O',
+    'Nbd2 line|d4 e5 dxe5 Nc6 Nf3 Qe7 Bf4 Qb4+ Nbd2 Nxe5 a3 Nxf3+ Nxf3 Qxb2', '…g5 line|d4 e5 dxe5 Nc6 Nf3 Qe7 Bf4 g5 Bg3 Bg7 Nc3 Nxe5'),
+  o('Latvian Gambit', 'b', 'After 1.e4 e5 2.Nf3 Black plays the aggressive 2…f5, trading solidity for a wild attack on the white king.',
+    'Main line|e4 e5 Nf3 f5 Nxe5 Qf6 d4 d6 Nc4 fxe4 Nc3 Qg6 Ne3 Nf6 Be2 Be7', 'Greco|e4 e5 Nf3 f5 Bc4 fxe4 Nxe5 Qg5 Nxf7 Qxg2 Rf1 Qxe4+ Be2 Nf6 Nxh8 d5', '3.Nxe5 Nc6|e4 e5 Nf3 f5 Nxe5 Nc6 Nxc6 dxc6 d3 Nf6 Be2 Bd6',
+    '3.d4|e4 e5 Nf3 f5 d4 fxe4 Nxe5 Nf6 Bg5 Be7', '3.Nc3|e4 e5 Nf3 f5 Nc3 fxe4 Nxe4 Qe7 Ng3 Nf6 d4 d6')
 ];
 OP.forEach(p => { p[2] = p[2].map(v => { const g = new Chess(), ok = []; for (const s of v[1].split(' ')) { const m = g.move(s, { sloppy: true }); if (!m) break; ok.push(m.san); } return [v[0], ok.join(' ')]; }).filter(v => v[1].split(' ').length >= 4); });
 let O = { i: 0, v: 0, n: 0 };
 function openingsView() { $('#app').innerHTML = layout(); O.B = Board($('#bd'), { g: new Chess(), can: () => false }); showOpening(O.i, O.v, 0); }
 function showOpening(i, v, n) {
+  if (!O.narr) stopVoice();
   O.i = i; O.v = v; const op = OP[i], line = op[2][v], mv = line[1].split(' '); O.n = Math.max(0, Math.min(mv.length, n));
   const g = new Chess(); let last = null; for (let k = 0; k < O.n; k++) { const m = g.move(mv[k], { sloppy: true }); last = m && [m.from, m.to]; }
   O.B.g = g; O.B.last = last; O.B.flip = op[3] === 'b'; O.B.draw();
-  $('#pn').innerHTML = `<h2>Openings</h2><div class="chips">${OP.map((x, k) => `<button class="chip ${k == i ? 'on' : ''}" onclick="speechSynthesis.cancel();showOpening(${k},0,0)">${x[0]}</button>`).join('')}</div>
+  $('#pn').innerHTML = `<h2>Openings</h2><div class="chips">${OP.map((x, k) => `<button class="chip ${k == i ? 'on' : ''}" onclick="showOpening(${k},0,0)">${x[0]}</button>`).join('')}</div>
   <h3>${op[0]}</h3><p>${op[1]}</p><div class="chips">${op[2].map((x, k) => `<button class="chip ${k == v ? 'on' : ''}" onclick="showOpening(${i},${k},0)">${x[0]}</button>`).join('')}</div>
-  <div class="mv">${mv.map((x, k) => (k % 2 ? '' : `<span class="mut">${k / 2 + 1}.</span> `) + x).join(' ')}</div>
-  <div class="row"><button class="chip" onclick="showOpening(${i},${v},0)">⏮</button><button class="chip" onclick="showOpening(${i},${v},O.n-1)">◀ Back</button><button class="chip" onclick="showOpening(${i},${v},O.n+1)">Next ▶</button>
-  <button class="btn" style="margin:0" onclick="speak(${i},${v})">🔊 Explain</button></div>`;
+  <div class="mv">${mv.map((x, k) => (k % 2 ? '' : `<span class="mut">${k / 2 + 1}.</span> `) + x).join(' ')}</div>${O.n > 0 ? `<p style="background:var(--tint);padding:10px 12px;border-radius:10px;font-size:15px;margin:10px 0 0">${explain(i, v, O.n)}</p>` : ''}
+  <div class="row"><button class="chip" onclick="showOpening(${i},${v},0)">|&lt;</button><button class="chip" onclick="showOpening(${i},${v},O.n-1)">&lt; Back</button><button class="chip" onclick="showOpening(${i},${v},O.n+1)">Next &gt;</button>
+  <button class="btn" style="margin:0" onclick="narrate(${i},${v})">Explain with voice</button><button class="chip" onclick="stopVoice()">Stop voice</button></div>`;
 }
-function speak(i, v) {   // reads the idea aloud with the browser's built-in voice
-  const op = OP[i], u = new SpeechSynthesisUtterance(`${op[0]}, ${op[2][v][0]}. ${op[1]}`); speechSynthesis.cancel(); speechSynthesis.speak(u);
+/* ---------- Opening commentary ---------- */
+const PN={p:'pawn',n:'knight',b:'bishop',r:'rook',q:'queen',k:'king'};
+const sqn=(r,c)=>'abcdefgh'[c]+(8-r),rcOf=s=>[8-s[1],'abcdefgh'.indexOf(s[0])];
+function atkSet(bd,r,c){const p=bd[r][c];if(!p)return[];const out=[],add=(a,b)=>{if(a>=0&&a<8&&b>=0&&b<8)out.push([a,b])},t=p.type;
+ if(t==='n')for(const[a,b]of[[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]])add(r+a,c+b);
+ else if(t==='k'){for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++)if(a||b)add(r+a,c+b)}
+ else if(t==='p'){const d=p.color==='w'?-1:1;add(r+d,c-1);add(r+d,c+1)}
+ else for(const[a,b]of t==='b'?DR:t==='r'?OR:DR.concat(OR)){let rr=r+a,cc=c+b;while(rr>=0&&rr<8&&cc>=0&&cc<8){out.push([rr,cc]);if(bd[rr][cc])break;rr+=a;cc+=b}}
+ return out}
+function pinsFrom(bd,r,c){const p=bd[r][c];if(!p||'bqr'.indexOf(p.type)<0)return[];const out=[];
+ for(const[a,b]of p.type==='b'?DR:p.type==='r'?OR:DR.concat(OR)){let rr=r+a,cc=c+b,f=null;
+  while(rr>=0&&rr<8&&cc>=0&&cc<8){const q=bd[rr][cc];if(q){if(!f){if(q.color===p.color||q.type==='k')break;f=[q,rr,cc]}else{if(q.color!==p.color&&(q.type==='k'||V[q.type]>V[f[0].type]))out.push([f,[q,rr,cc]]);break}}rr+=a;cc+=b}}
+ return out}
+function defended(bd,r,c,col){for(let a=0;a<8;a++)for(let b=0;b<8;b++){const q=bd[a][b];if(q&&q.color===col&&(a!==r||b!==c)&&atkSet(bd,a,b).some(x=>x[0]===r&&x[1]===c))return true}return false}
+function mvInfo(i,vi,n){const mv=OP[i][2][vi][1].split(' '),g=new Chess(),cnt={};
+ for(let k=0;k<n;k++){const bd0=g.board(),m=g.move(mv[k],{sloppy:true});if(!m)return null;const prior=cnt[m.from]||0;delete cnt[m.from];cnt[m.to]=prior+1;if(k===n-1)return{g,bd0,m,prior}}
+ return null}
+function explain(i,vi,n){const I=mvInfo(i,vi,n);if(!I)return'';const{g,bd0,m,prior}=I,bd=g.board(),w=m.color==='w',C=w?'White':'Black',E=w?'Black':'White',e=E.toLowerCase(),
+ [r,c]=rcOf(m.to),[fr]=rcOf(m.from),pt=PN[m.piece],cap=!!m.captured,cast=m.flags.includes('k')||m.flags.includes('q'),home=w?7:0,dev=(m.piece==='n'||m.piece==='b')&&fr===home&&!cap,why=[],tac=[],ext=[];
+ let L;
+ if(cast)L=`${C} castles ${m.flags.includes('k')?'kingside':'queenside'}.`;
+ else if(cap)L=`${C} captures the ${PN[m.captured]} on ${m.to} with the ${pt} from ${m.from}${m.flags.includes('e')?', en passant':''}.`;
+ else if(m.piece==='p')L=`${C} pushes the pawn from ${m.from} to ${m.to}${Math.abs(r-fr)===2?', two squares forward':''}.`;
+ else if(dev)L=`${C} develops the ${pt} from ${m.from} to ${m.to}.`;
+ else L=`${C} moves the ${pt} from ${m.from} to ${m.to}.`;
+ const cen=[[3,3],[3,4],[4,3],[4,4]],at=cast?[]:atkSet(bd,r,c),cs=at.filter(x=>cen.some(y=>y[0]===x[0]&&y[1]===x[1])).map(x=>sqn(x[0],x[1]));
+ if(cast)why.push('This tucks the king safely behind its pawns and brings the rook toward the centre, so the king is protected and the rooks can start working together.');
+ else if(m.piece==='p'){
+  if(!cap&&(c===3||c===4)&&(r===3||r===4))why.push('This pawn claims space in the centre, the most important part of the board, and it opens lines for the bishop and the queen.');
+  else if(cap)why.push(`The capture changes the pawn structure and opens a line, so ${C} gets more active play.`);
+  else if(c<=1||c>=6)why.push(`A flank pawn move like this gains space on the ${c<=2?'queenside':'kingside'} and can prepare play there.`);
+  else why.push('This supports the centre and prepares to bring more pieces out.');
+  const sup=at.map(x=>[bd[x[0]][x[1]],x]).filter(y=>y[0]&&y[0].color===m.color);
+  if(sup.length&&!cap)why.push(`It also protects the ${PN[sup[0][0].type]} on ${sqn(sup[0][1][0],sup[0][1][1])}.`)}
+ else if(dev)why.push('Developing a minor piece early is a basic opening principle, because it brings a new attacker into the game.');
+ if((m.piece==='n'||m.piece==='b'||m.piece==='q')&&cs.length)why.push(`From ${m.to} it controls ${cs.join(' and ')} in the centre.`);
+ if(m.piece==='r'&&!cast){let own=0,en=0;for(let a=0;a<8;a++){const q=bd[a][c];if(q&&q.type==='p')q.color===m.color?own++:en++}
+  why.push(own===0&&en===0?'The rook lands on a fully open file, where it has plenty of room to work.':own===0?'The rook takes a semi-open file, which points it straight at the enemy pawns.':'The rook joins the action and prepares to use the files that open up later.')}
+ if(m.piece==='q'&&n<=10&&!cap)why.push('Bringing the queen out this early is risky, because the opponent can attack her and gain time. It only makes sense when it creates a real threat.');
+ if(m.piece==='k'&&!cast)why.push('Moving the king like this gives up castling, so it should have a concrete reason.');
+ if((m.piece==='n'||m.piece==='b')&&prior>=1&&!cap)why.push('This piece has already moved before, which costs time in the opening unless it creates a threat.');
+ if(!cast){const tg=at.map(x=>[bd[x[0]][x[1]],x]).filter(y=>y[0]&&y[0].color!==m.color&&y[0].type!=='k').sort((a,b)=>V[b[0].type]-V[a[0].type]);
+  if(tg.length){const y=tg[0],nm2=`${PN[y[0].type]} on ${sqn(y[1][0],y[1][1])}`;
+   tac.push(defended(bd,y[1][0],y[1][1],y[0].color)?`It now attacks the ${e} ${nm2}, which is protected for the moment.`:`It now attacks the ${e} ${nm2}, and nothing is defending it, so that is a real threat.`)}
+  const pn=pinsFrom(bd,r,c)[0];
+  if(pn){const[f,q]=pn;tac.push(q[0].type==='k'?`It pins the ${PN[f[0].type]} on ${sqn(f[1],f[2])} to the king, so that piece can’t move without exposing the king.`:`It lines up the ${PN[f[0].type]} on ${sqn(f[1],f[2])} in front of the ${PN[q[0].type]} on ${sqn(q[1],q[2])}, so moving it would expose the more valuable piece.`)}}
+ if(g.in_checkmate())tac.unshift('That is checkmate!');else if(g.in_check())tac.unshift(`This gives check, so ${E} has to answer it immediately.`);
+ if(cap){const rec=g.moves({verbose:true}).some(x=>x.to===m.to&&x.captured);ext.push(rec?`${E} can recapture, so this is an exchange of pieces.`:`${E} has no way to recapture, so ${C} wins material.`)}
+ if(!cast&&!'brq'.includes(m.piece)){const nb=[];
+  for(let a=0;a<8;a++)for(let b=0;b<8;b++){const q=bd[a][b],q0=bd0[a][b];if(q&&q0&&q.color===m.color&&'brq'.includes(q.type)&&(a!==r||b!==c)&&atkSet(bd,a,b).length>=atkSet(bd0,a,b).length+2)nb.push(`${PN[q.type]} on ${sqn(a,b)}`)}
+  if(nb.length)ext.push(`It also opens a line for the ${nb.slice(0,2).join(' and the ')}.`)}
+ return[L].concat(why.slice(0,2),tac.slice(0,2),ext.slice(0,1)).join(' ')}
+function summary(i,vi){const g=new Chess();OP[i][2][vi][1].split(' ').forEach(s=>g.move(s,{sloppy:true}));const bd=g.board(),st={w:{dev:0,cas:'',ctr:[]},b:{dev:0,cas:'',ctr:[]}};
+ for(let r=0;r<8;r++)for(let c=0;c<8;c++){const p=bd[r][c];if(!p)continue;const s=st[p.color],home=p.color==='w'?7:0;
+  if((p.type==='n'||p.type==='b')&&r!==home)s.dev++;if(p.type==='k'&&r===home&&(c===6||c===2))s.cas=c===6?'kingside':'queenside';
+  if(p.type==='p'&&(c===3||c===4)&&(r===3||r===4))s.ctr.push(sqn(r,c))}
+ const f=(C,s)=>`${C} has ${s.dev} minor piece${s.dev==1?'':'s'} developed, ${s.cas?'has castled '+s.cas:'has not castled yet'}${s.ctr.length?', and has pawns on '+s.ctr.join(' and ')+' in the centre':''}.`;
+ return`That is the end of this line. Let’s take stock of the final position. ${f('White',st.w)} ${f('Black',st.b)} The main idea to remember: ${OP[i][1]}`}
+
+let ONARR = 0;   // narration token: bumping it stops the voice
+function stopVoice() { ONARR++; try { speechSynthesis.cancel(); } catch (e) {} }
+const speakText = t => t.replace(/\b([a-h])([1-8])\b/g, '$1 $2');
+function sayText(t, cb) {
+  const s = window.speechSynthesis; if (!s || !window.SpeechSynthesisUtterance) { setTimeout(cb || (() => {}), 1500); return; }
+  const u = new SpeechSynthesisUtterance(speakText(t)); u.rate = .93; u.onend = cb || null; u.onerror = cb || null; s.speak(u);
+}
+function narrate(i, v) {   // reads the idea, then plays the line move by move, explaining what each move does
+  stopVoice(); const tok = ONARR, op = OP[i], line = op[2][v], mv = line[1].split(' ');
+  O.narr = true; showOpening(i, v, 0); O.narr = false;
+  const step = k => {
+    if (tok !== ONARR) return;
+    if (k >= mv.length) { sayText(summary(i, v) + ' Press Explain again to hear it once more, or pick another variation.'); return; }
+    O.narr = true; showOpening(i, v, k + 1); O.narr = false;
+    sayText((k % 2 ? '' : `Move ${k / 2 + 1}. `) + explain(i, v, k + 1), () => setTimeout(() => step(k + 1), 600));
+  };
+  sayText(`${op[0]}, ${line[0]}. ${op[1]} Now let us go through the moves one at a time, and look at what each one actually does.`, () => step(0));
 }
 
 /* ---------- Online play (uses the same free Firebase database as accounts: set DB_URL) ---------- */
@@ -676,9 +821,9 @@ function onlineView() {
   if (!cloud) { $('#app').innerHTML = '<div class="wrap" style="max-width:640px"><div class="card"><h2>Online play</h2><p>Online games need a shared database. Set <b>DB_URL</b> at the top of the accounts section in script.js (the same free Firebase Realtime Database used for accounts), then reload.</p></div></div>'; return; }
   $('#app').innerHTML = `<div class="wrap" style="max-width:640px"><div class="card"><h2>Online play</h2><p class="mut">Choose a time control, then press Play. You’ll be paired with another player who is searching for the same time control. Your Elo: <b>${D().rating}</b></p>
   <div class="chips">${TCS.map((t, i) => `<button class="chip ${OLN.tcI == i ? 'on' : ''}" onclick="if(!OLN.q){OLN.tcI=${i};onlineView()}">${t.l}</button>`).join('')}</div>
-  <div id="qs"></div><button class="btn" id="pq" onclick="queueUp()">▶ Play</button></div></div>`;
+  <div id="qs"></div><button class="btn" id="pq" onclick="queueUp()">Play</button></div></div>`;
 }
-const renderQ = () => { $('#qs').innerHTML = `<div class="stat">🔍 Searching for an opponent… <b>${TCS[OLN.q.tc].l}</b> <button class="chip" style="margin-left:8px" onclick="cancelQ()">Cancel</button></div>`; $('#pq').disabled = true; };
+const renderQ = () => { $('#qs').innerHTML = `<div class="stat">Searching for an opponent… <b>${TCS[OLN.q.tc].l}</b> <button class="chip" style="margin-left:8px" onclick="cancelQ()">Cancel</button></div>`; $('#pq').disabled = true; };
 function cancelQ() { clearInterval(OLN.poll); api('queue/' + ME, 'DELETE').catch(() => {}); OLN.q = null; onlineView(); }
 async function queueUp() {
   if (OLN.q) return; OLN.q = { tc: OLN.tcI };
@@ -771,7 +916,7 @@ function historyView() {
   const hs = D().hist || [];
   $('#app').innerHTML = `<div class="wrap"><h2>Game history</h2><div class="card" style="overflow-x:auto">${hs.length ? `<table class="ht">${hs.map(g => {
     const r = g.res === 'd' ? 'Draw' : g.res === g.me ? 'Win' : 'Loss', n = Math.ceil(g.mv.split(' ').filter(Boolean).length / 2);
-    return `<tr onclick="location.hash='#game/${g.id}'"><td><b class="${r}">${r}</b></td><td>${g.me === 'w' ? '⚪' : '⚫'} vs ${esc(g.opp)} <span class="mut">${g.oppR || ''}</span></td><td class="mut">${esc(g.op || '')}</td><td>${n} moves</td><td class="mut">${g.mode} · ${g.tc}</td><td>${g.delta >= 0 ? '+' : ''}${g.delta}</td><td class="mut">${new Date(g.date).toLocaleDateString()}</td><td><a class="chip" onclick="event.stopPropagation();location.hash='#review/${g.id}'">Review</a></td></tr>`;
+    return `<tr onclick="location.hash='#game/${g.id}'"><td><b class="${r}">${r}</b></td><td>${g.me === 'w' ? 'White' : 'Black'} vs ${esc(g.opp)} <span class="mut">${g.oppR || ''}</span></td><td class="mut">${esc(g.op || '')}</td><td>${n} moves</td><td class="mut">${g.mode} · ${g.tc}</td><td>${g.delta >= 0 ? '+' : ''}${g.delta}</td><td class="mut">${new Date(g.date).toLocaleDateString()}</td><td><a class="chip" onclick="event.stopPropagation();location.hash='#review/${g.id}'">Review</a></td></tr>`;
   }).join('')}</table>` : '<span class="mut">No games yet. Finish a game and it will show up here.</span>'}</div></div>`;
 }
 let GV = null;
@@ -790,7 +935,7 @@ function gvShow(n) {
   <div class="stat">${g.res === 'd' ? 'Draw' : g.res === g.me ? you + ' won' : (G.who ? esc(g.opp) + ' won' : 'You lost')}${g.why ? ' (' + esc(g.why) + ')' : ''} · ${g.mode} · ${g.tc}<br><span class="mut" style="font-weight:400">${new Date(g.date).toLocaleString()}</span></div>
   ${openingBox(g.op)}<div class="mv" style="max-height:300px"><table class="mvt">${rows}</table></div>
   <p class="mut" style="font-size:13px;margin:6px 0 0">The small number next to each move is the time that player had left after making it.</p>
-  <div class="row"><button class="chip" onclick="gvShow(0)">⏮</button><button class="chip" onclick="gvShow(GV.n-1)">◀</button><button class="chip" onclick="gvShow(GV.n+1)">▶</button><button class="chip" onclick="gvShow(GV.mv.length)">⏭</button><button class="chip" onclick="GV.B.flip=!GV.B.flip;GV.B.draw()">Flip board</button>${G.who ? '' : `<a class="btn" style="margin:0;padding:8px 14px" href="#review/${g.id}">Review</a>`}</div>`;
+  <div class="row"><button class="chip" onclick="gvShow(0)">|&lt;</button><button class="chip" onclick="gvShow(GV.n-1)">&lt;</button><button class="chip" onclick="gvShow(GV.n+1)">&gt;</button><button class="chip" onclick="gvShow(GV.mv.length)">&gt;|</button><button class="chip" onclick="GV.B.flip=!GV.B.flip;GV.B.draw()">Flip board</button>${G.who ? '' : `<a class="btn" style="margin:0;padding:8px 14px" href="#review/${g.id}">Review</a>`}</div>`;
 }
 addEventListener('keydown', e => { if (GV && location.hash.startsWith('#game/')) { if (e.key === 'ArrowLeft') gvShow(GV.n - 1); if (e.key === 'ArrowRight') gvShow(GV.n + 1); } });
 
@@ -815,17 +960,17 @@ function challenge(k) {
   const t = TITLES.find(x => x.k === k), d = D(); TM = {};
   if (d.rating < t.elo) TM[k] = "You don't have enough Elo to get this title.";
   else if (P.on) TM[k] = 'Finish your current game first.';
-  else { P.bot = BOTS.findIndex(b => b.title === k); P.pick = 'r'; P.tcI = 6; P.over = false; P.auto = true; location.hash = '#play'; return; }
+  else { P.bot = BOTS.findIndex(b => b.chal && b.title === k); P.pick = 'r'; P.tcI = 6; P.over = false; P.auto = true; location.hash = '#play'; return; }
   titlesView();
 }
 function titlesView() {
   const d = D();
   $('#app').innerHTML = `<div class="wrap"><h2>Titles</h2><p class="mut">Reach the Elo, then take on the title holder. Defeat the bot 3 times to earn the title. Your Elo: <b>${d.rating}</b></p><div class="grid">${TITLES.map(t => {
-    const have = (d.titles || []).includes(t.k) || MYT === t.k, w = Math.min((d.tw || {})[t.k] || 0, 3), ok = d.rating >= t.elo, bot = BOTS.find(b => b.title === t.k);
+    const have = (d.titles || []).includes(t.k) || MYT === t.k, w = Math.min((d.tw || {})[t.k] || 0, 3), ok = d.rating >= t.elo, bot = BOTS.find(b => b.chal && b.title === t.k);
     return `<div class="card"><h3>${tt(t.k)}${t.n}</h3><p class="mut">Opponent: ${tt(t.k)}${esc(bot.n)} · ${bot.r} Elo</p>
     <div style="display:flex;justify-content:space-between"><span>${ok ? '✓' : '○'} Reach ${t.elo} Elo</span><span class="mut">${d.rating}/${t.elo}</span></div><div class="bar"><i style="width:${Math.min(100, d.rating / t.elo * 100)}%"></i></div>
     <div style="display:flex;justify-content:space-between;margin-top:10px"><span>${w >= 3 ? '✓' : '○'} Defeat the bot 3 times</span><span class="mut">${w}/3</span></div><div class="bar"><i style="width:${w / 3 * 100}%"></i></div>
-    ${TM[t.k] ? `<div class="stat">${TM[t.k]}</div>` : ''}${have ? '<div class="stat">🏅 Title earned!</div>' : `<button class="btn" onclick="challenge('${t.k}')">Play the ${t.k} challenge</button>`}</div>`;
+    ${TM[t.k] ? `<div class="stat">${TM[t.k]}</div>` : ''}${have ? '<div class="stat">Title earned!</div>' : `<button class="btn" onclick="challenge('${t.k}')">Play the ${t.k} challenge</button>`}</div>`;
   }).join('')}</div></div>`;
 }
 
@@ -834,7 +979,7 @@ let SR = null, PRES = null;
 function pubPush() {   // publish my public profile (rating, title, recent games) so other players can look me up
   if (!cloud || !ME || !CUR) return; const d = D(), t = titleOf(d);
   api('roster/' + ME, 'PATCH', { u: CUR.u, r: d.rating, t, seen: { '.sv': 'timestamp' } }).catch(() => {});
-  api('players/' + ME, 'PUT', { u: CUR.u, r: d.rating, t, ti: d.titles || [], w: d.w || 0, peak: d.peak || d.rating, h: (d.hist || []).slice(0, 15) }).catch(() => {});
+  api('players/' + ME, 'PUT', { u: CUR.u, r: d.rating, t, ti: d.titles || [], w: d.w || 0, peak: d.peak || d.rating, h: (d.hist || []).slice(0, 15), br: (d.brill || []).slice(0, 20), jn: CUR.joined || 0 }).catch(() => {});
 }
 function startPresence() {   // heartbeat: a player counts as online if seen in the last minute
   if (!cloud || PRES || !ME) return; pubPush();
@@ -860,9 +1005,9 @@ async function roster() {
 async function getPlayer(id) {
   if (cloud) {
     let p = await api('players/' + id);
-    if (!p) { const [u, d] = await Promise.all([api(`accounts/${id}/u`), api(`accounts/${id}/d`)]); if (!u) return null; p = { u, r: (d || {}).rating || 800, t: titleOf(d || {}), ti: (d || {}).titles || [], w: (d || {}).w || 0, peak: (d || {}).peak || (d || {}).rating || 800, h: ((d || {}).hist || []).slice(0, 15) }; }
+    if (!p) { const [u, d] = await Promise.all([api(`accounts/${id}/u`), api(`accounts/${id}/d`)]); if (!u) return null; p = { u, br: (d || {}).brill || [], r: (d || {}).rating || 800, t: titleOf(d || {}), ti: (d || {}).titles || [], w: (d || {}).w || 0, peak: (d || {}).peak || (d || {}).rating || 800, h: ((d || {}).hist || []).slice(0, 15) }; }
     const tw = await api('titles/' + id); if (tw != null) p.t = normT(tw);
-    p.h = p.h || []; return p;
+    p.h = p.h || []; p.br = p.br || []; return p;
   }
   const a = ACC[id]; if (!a) return null; const d = a.d || {};
   return { u: a.u, r: d.rating || 800, t: titleOf(d), ti: d.titles || [], w: d.w || 0, peak: d.peak || d.rating || 800, h: (d.hist || []).slice(0, 15) };
@@ -892,25 +1037,203 @@ async function searchView(tab) {
   };
   load(); if (tab === 'online') SR = setInterval(() => { if (location.hash.startsWith('#search')) load(); }, 10000);
 }
-async function playerView(id) {
-  $('#app').innerHTML = '<div class="wrap"><span class="mut">Loading…</span></div>'; let p = null;
-  try { p = await getPlayer(id); } catch (e) {}
-  if (!p) { $('#app').innerHTML = '<div class="wrap"><p><a href="#search/all">← Players</a></p><div class="card">This player could not be found.</div></div>'; return; }
-  const h = p.h || [], won = h.filter(g => g.res === g.me).length;
-  $('#app').innerHTML = `<div class="wrap"><p><a href="#search/all">← Players</a></p><h2>${tt(p.t)}${esc(p.u)}</h2>
-  <div class="card"><div style="font:700 54px Georgia,serif;color:var(--deep)">${p.r}</div><span class="mut">Elo rating</span><p>Peak ${p.peak || p.r} · ${p.w || 0} wins${(p.ti || []).length ? ' · Titles: ' + p.ti.map(tt).join('') : ''}</p></div>
-  <h3>Game history</h3><div class="card" style="overflow-x:auto">${h.length ? `<table class="ht">${h.map(g => { const r = g.res === 'd' ? 'Draw' : g.res === g.me ? 'Win' : 'Loss';
-    return `<tr onclick="location.hash='#pgame/${id}/${g.id}'"><td><b class="${r}">${r}</b></td><td>${g.me === 'w' ? '⚪' : '⚫'} vs ${esc(g.opp)} <span class="mut">${g.oppR || ''}</span></td><td class="mut">${esc(g.op || '')}</td><td>${Math.ceil(g.mv.split(' ').filter(Boolean).length / 2)} moves</td><td class="mut">${g.mode} · ${g.tc}</td><td>${g.delta >= 0 ? '+' : ''}${g.delta}</td><td class="mut">${new Date(g.date).toLocaleDateString()}</td></tr>`; }).join('')}</table>` : '<span class="mut">No games to show yet.</span>'}</div></div>`;
-}
 async function pgameView(arg) {
   const [id, gid] = arg.split('/'); let p = null; try { p = await getPlayer(id); } catch (e) {}
   const g = p && (p.h || []).find(x => x.id === gid); if (!g) { location.hash = '#player/' + id; return; }
   gameView(gid, g, p.u, '#player/' + id);
 }
 
+/* ---------- Profiles, friends, requests, challenges and settings (these need the shared database) ---------- */
+const needDb = () => '<div class="wrap"><div class="card">This feature needs the shared database (DB_URL).</div></div>';
+const ago = ms => { const s = Math.max(0, (snow() - ms) / 1000); return s < 90 ? 'a minute ago' : s < 3600 ? Math.round(s / 60) + ' minutes ago' : s < 86400 ? Math.round(s / 3600) + ' hours ago' : Math.round(s / 86400) + ' days ago'; };
+let REQN = 0;
+function renderNav() {
+  const e = $('#nav'); if (!e) return; const hk = location.hash.slice(1).split('/')[0], act = { game: 'history', review: 'history', player: 'search', pgame: 'search', brill: 'search' }[hk] || hk;
+  e.innerHTML = NAV.map(([k, l]) => `<a href="#${k}" class="${act === k ? 'on' : ''}">${l}${k === 'requests' && REQN ? ` <span class="tt" style="margin:0 0 0 4px">${REQN}</span>` : ''}</a>`).join('');
+}
+async function countReq() {
+  if (!cloud || !ME) return;
+  try { const [r, c] = await Promise.all([api('requests/' + ME), api('challenges/' + ME)]), now = snow(); REQN = Object.keys(r || {}).length + Object.values(c || {}).filter(x => x && x.st === 'pending' && now - x.t < 180000).length; renderNav(); } catch (e) {}
+}
+async function rel(id) { const [f, s, i] = await Promise.all([api(`friends/${ME}/${id}`), api(`requests/${id}/${ME}`), api(`requests/${ME}/${id}`)]); return { friend: !!f, sent: !!s, incoming: !!i }; }
+const sendFriend = async id => { await api(`requests/${id}/${ME}`, 'PUT', { u: CUR.u, t: { '.sv': 'timestamp' } }); route(); };
+async function acceptFriend(id) { await Promise.all([api(`friends/${ME}/${id}`, 'PUT', true), api(`friends/${id}/${ME}`, 'PUT', true), api(`requests/${ME}/${id}`, 'DELETE')]); countReq(); route(); }
+async function declineFriend(id) { await api(`requests/${ME}/${id}`, 'DELETE'); countReq(); route(); }
+async function unfriend(id) { await Promise.all([api(`friends/${ME}/${id}`, 'DELETE'), api(`friends/${id}/${ME}`, 'DELETE')]); route(); }
+
+async function friendsView() {
+  if (!cloud) { $('#app').innerHTML = needDb(); return; }
+  $('#app').innerHTML = '<div class="wrap"><h2>Friends</h2><div class="card" id="fr"><span class="mut">Loading…</span></div></div>';
+  try {
+    const f = (await api('friends/' + ME)) || {}, r = await roster(), now = snow(), ids = Object.keys(f);
+    $('#fr').innerHTML = ids.length ? `<table class="ht">${ids.map(id => { const x = r[id] || { u: id, r: 800 }, on = x.seen && now - x.seen < 60000;
+      return `<tr onclick="location.hash='#player/${id}'"><td><i class="dot ${on ? 'on' : ''}"></i>${tt(x.t)}<b>${esc(x.u)}</b></td><td>${x.r || 800} Elo</td><td class="mut">${on ? 'Online' : 'Offline'}</td><td><a class="chip" onclick="event.stopPropagation();unfriend('${id}')">Remove</a></td></tr>`; }).join('')}</table>` : '<span class="mut">No friends yet. Find players in Search and send them a friend request.</span>';
+  } catch (e) { $('#fr').innerHTML = 'Could not load friends.'; }
+}
+async function requestsView() {
+  if (!cloud) { $('#app').innerHTML = needDb(); return; }
+  clearInterval(SR); $('#app').innerHTML = '<div class="wrap"><h2>Requests</h2><div id="rq" class="card"><span class="mut">Loading…</span></div></div>';
+  const load = async () => {
+    const box = $('#rq'); if (!box) return;
+    try {
+      const [fr, ch] = await Promise.all([api('requests/' + ME), api('challenges/' + ME)]), now = snow(), cs = Object.entries(ch || {}).filter(([, x]) => x && x.st === 'pending' && now - x.t < 180000), fs = Object.entries(fr || {});
+      box.innerHTML = `<h3 style="margin-top:0">Challenges</h3>${cs.length ? `<table class="ht">${cs.map(([id, x]) => `<tr style="cursor:default"><td><b>${esc(x.u)}</b> challenges you to a ${TCS[x.tc].l} game</td><td><button class="btn" style="margin:0;padding:6px 14px" onclick="acceptChallenge('${id}')">Accept</button> <button class="chip" onclick="declineChallenge('${id}')">Decline</button></td></tr>`).join('')}</table>` : '<span class="mut">No challenges.</span>'}
+      <h3>Friend requests</h3>${fs.length ? `<table class="ht">${fs.map(([id, x]) => `<tr style="cursor:default"><td><a href="#player/${id}"><b>${esc(x.u)}</b></a> wants to be your friend</td><td><button class="btn" style="margin:0;padding:6px 14px" onclick="acceptFriend('${id}')">Accept</button> <button class="chip" onclick="declineFriend('${id}')">Decline</button></td></tr>`).join('')}</table>` : '<span class="mut">No friend requests.</span>'}`;
+    } catch (e) { box.innerHTML = 'Could not load requests.'; }
+  };
+  load(); SR = setInterval(() => { if (location.hash === '#requests') load(); }, 5000);
+}
+async function declineChallenge(id) { await api(`challenges/${ME}/${id}`, 'PATCH', { st: 'declined' }); countReq(); requestsView(); }
+async function acceptChallenge(id) {
+  try {
+    const c = await api(`challenges/${ME}/${id}`); if (!c || c.st !== 'pending') { requestsView(); return; }
+    const rr = (await api('roster/' + id)) || {}, tc = TCS[c.tc], meW = Math.random() < .5, a = { u: ME, n: CUR.u, r: D().rating, ti: titleOf(D()) }, b = { u: id, n: c.u, r: rr.r || 800, ti: rr.t || '' }, w = meW ? a : b, k = meW ? b : a, gid = Date.now() + '_' + ME + '_' + id;
+    await api('games/' + gid, 'PUT', { w: w.u, b: k.u, wn: w.n, bn: k.n, wr: w.r, br: k.r, wt: w.ti || '', bt: k.ti || '', tc: c.tc, fen: new Chess().fen(), mv: '', tl: '', last: '', st: 'live', res: '', why: '', cw: tc.m * 60000, cb: tc.m * 60000, ts: { '.sv': 'timestamp' } });
+    await api(`challenges/${ME}/${id}`, 'PATCH', { st: 'accepted', gid }); clearInterval(SR); startOnline(gid, await api('games/' + gid));
+  } catch (e) { requestsView(); }
+}
+async function settingsView() {
+  if (!cloud) { $('#app').innerHTML = needDb(); return; }
+  let cur = 'anyone'; try { const s = await api('settings/' + ME); if (s && s.challenge) cur = s.challenge; } catch (e) {}
+  $('#app').innerHTML = `<div class="wrap" style="max-width:640px"><h2>Settings</h2><div class="card"><h3 style="margin-top:0">Who can challenge me</h3><div class="chips">${[['friends', 'Only friends'], ['anyone', 'Anyone'], ['none', 'No one']].map(([v, l]) => `<button class="chip ${cur === v ? 'on' : ''}" onclick="setChal('${v}')">${l}</button>`).join('')}</div></div></div>`;
+}
+async function setChal(v) { await api('settings/' + ME, 'PUT', { challenge: v }); settingsView(); }
+
+async function openChallenge(id) {   // asks the player's settings first, then lets you pick a time control and send the challenge
+  const box = $('#chp'); box.innerHTML = '<span class="mut">Checking…</span>';
+  try {
+    const s = (await api('settings/' + id)) || {}, mode = s.challenge || 'anyone', friend = !!(await api(`friends/${ME}/${id}`));
+    if (mode === 'none') { box.innerHTML = '<div class="stat">This player is not accepting challenges.</div>'; return; }
+    if (mode === 'friends' && !friend) { box.innerHTML = '<div class="stat">This player only accepts challenges from friends.</div>'; return; }
+    box.innerHTML = `<div class="stat">Choose a time control:<div class="chips">${TCS.map((t, i) => `<button class="chip ${OLN.tcI == i ? 'on' : ''}" onclick="OLN.tcI=${i};openChallenge('${id}')">${t.l}</button>`).join('')}</div><button class="btn" onclick="sendChallenge('${id}')">Send challenge</button></div>`;
+  } catch (e) { box.innerHTML = '<div class="stat">Could not reach the database.</div>'; }
+}
+async function sendChallenge(id) {
+  try { await api(`challenges/${id}/${ME}`, 'PUT', { u: CUR.u, tc: OLN.tcI, t: { '.sv': 'timestamp' }, st: 'pending' }); } catch (e) { return; }
+  $('#chp').innerHTML = `<div class="stat">Challenge sent. Waiting for them to accept… <button class="chip" onclick="cancelChallenge('${id}')">Cancel</button></div>`;
+  clearInterval(OLN.poll); const t0 = Date.now(), end = m => { clearInterval(OLN.poll); api(`challenges/${id}/${ME}`, 'DELETE').catch(() => {}); if (m && $('#chp')) $('#chp').innerHTML = `<div class="stat">${m}</div>`; };
+  OLN.poll = setInterval(async () => {
+    try {
+      const c = await api(`challenges/${id}/${ME}`); if (!c) { clearInterval(OLN.poll); return; }
+      if (c.st === 'accepted') { end(); const d = await api('games/' + c.gid); if (d) startOnline(c.gid, d); }
+      else if (c.st === 'declined') end('They declined your challenge.'); else if (Date.now() - t0 > 180000) end('No response. The challenge expired.');
+    } catch (e) {}
+  }, 2000);
+}
+function cancelChallenge(id) { clearInterval(OLN.poll); api(`challenges/${id}/${ME}`, 'DELETE').catch(() => {}); $('#chp').innerHTML = ''; }
+
+async function playerView(arg) {
+  const [id, tr] = String(arg).split('/'), tab = ['games', 'status'].includes(tr) ? tr : 'overview'; let p = null;
+  $('#app').innerHTML = '<div class="wrap"><span class="mut">Loading…</span></div>';
+  try { p = await getPlayer(id); } catch (e) {}
+  if (!p) { $('#app').innerHTML = '<div class="wrap"><p><a href="#search/all">Back to players</a></p><div class="card">This player could not be found.</div></div>'; return; }
+  const me = id === ME; let rl = { friend: false, sent: false, incoming: false }, seen = 0, nf = 0;
+  if (cloud) { try { if (!me) rl = await rel(id); seen = ((await api('roster/' + id)) || {}).seen || 0; nf = Object.keys((await api('friends/' + id)) || {}).length; } catch (e) {} }
+  const on = me || (seen && snow() - seen < 60000), h = p.h || [], br = p.br || [];
+  const btns = me ? '' : `${rl.friend ? '<button class="chip" disabled>Friends</button>' : rl.sent ? '<button class="chip" disabled>Request sent</button>' : rl.incoming ? `<button class="btn" style="margin:0" onclick="acceptFriend('${id}')">Accept request</button>` : `<button class="btn" style="margin:0" onclick="sendFriend('${id}')">Add Friend</button>`}<button class="chip" onclick="openChallenge('${id}')">Challenge</button>`;
+  const tabs = [['overview', 'Overview'], ['games', 'Games'], ['status', 'Status']].map(([k, l]) => `<a href="#player/${id}${k === 'overview' ? '' : '/' + k}" class="${tab === k ? 'on' : ''}">${l}</a>`).join('');
+  let body = '';
+  if (tab === 'overview') body = `<div class="card"><div style="font:700 54px Georgia,serif;color:var(--deep)">${p.r}</div><span class="mut">Elo rating</span><p>Peak ${p.peak || p.r} · ${p.w || 0} wins${(p.ti || []).length ? ' · Titles: ' + p.ti.map(tt).join('') : ''}</p></div>`;
+  else if (tab === 'games') body = `<div class="card" style="overflow-x:auto">${h.length ? `<table class="ht">${h.map(g => { const r = g.res === 'd' ? 'Draw' : g.res === g.me ? 'Win' : 'Loss';
+    return `<tr onclick="location.hash='#pgame/${id}/${g.id}'"><td><b class="${r}">${r}</b></td><td>${g.me === 'w' ? 'White' : 'Black'} vs ${esc(g.opp)} <span class="mut">${g.oppR || ''}</span></td><td class="mut">${esc(g.op || '')}</td><td>${Math.ceil(g.mv.split(' ').filter(Boolean).length / 2)} moves</td><td class="mut">${g.mode} · ${g.tc}</td><td>${g.delta >= 0 ? '+' : ''}${g.delta}</td><td class="mut">${new Date(g.date).toLocaleDateString()}</td><td><a class="chip" onclick="event.stopPropagation();location.hash='#review/${id}/${g.id}'">Analyse</a></td></tr>`; }).join('')}</table>` : '<span class="mut">No games to show yet.</span>'}</div>`;
+  else body = `<div class="card"><h3 style="margin-top:0">Brilliant moves</h3>${br.length ? `<table class="ht">${br.map(b => `<tr onclick="location.hash='#brill/${id}/${encodeURIComponent(b.k)}'"><td><img class="mi" style="margin:0 8px 0 0;width:20px;height:20px" src="reviews/brilliant.png" alt=""><b>${esc(b.san)}</b></td><td>vs ${esc(b.opp)}</td><td class="mut">${new Date(b.date).toLocaleDateString()}</td></tr>`).join('')}</table>` : '<span class="mut">No brilliant moves yet. They appear here when a game review finds one.</span>'}</div>`;
+  $('#app').innerHTML = `<div class="wrap"><p><a href="#search/all">Back to players</a></p>
+  <div class="card prof"><img class="avatar" src="image/wp.png" alt=""><div class="pinfo"><h2 style="margin:0">${tt(p.t)}${esc(p.u)}</h2><div class="mut" style="margin-top:10px">${p.jn ? 'Joined <b>' + new Date(p.jn).toLocaleDateString() + '</b> · ' : ''}<b>${nf}</b> Friends · ${on ? '<b>Online now</b>' : seen ? 'Last online <b>' + ago(seen) + '</b>' : 'Offline'}</div></div><div class="pact">${btns}</div></div>
+  <div id="chp"></div><div class="ptabs">${tabs}</div>${body}</div>`;
+}
+async function brillView(arg) {
+  const [id, k] = arg.split('/'), key = decodeURIComponent(k); let p = null; try { p = await getPlayer(id); } catch (e) {}
+  const b = p && (p.br || []).find(x => x.k === key); if (!b) { location.hash = '#player/' + id + '/status'; return; }
+  $('#app').innerHTML = layout(); const B = Board($('#bd'), { g: new Chess(b.fen), can: () => false }); B.flip = b.fen.split(' ')[1] === 'b'; B.arrows = [[b.from, b.to]]; B.draw();
+  $('#pn').innerHTML = `<p style="margin:0"><a href="#player/${id}/status">Back to ${esc(p.u)}</a></p><h2><img class="mi" style="margin:0 8px 0 0;width:28px;height:28px" src="reviews/brilliant.png" alt="">Brilliant move</h2><div class="stat">${esc(p.u)} played <b>${esc(b.san)}</b> against ${esc(b.opp)}.</div><p>The arrow shows the move in the position before it was played. A brilliant move is a strong move, often a sacrifice, that the engine confirms is still best.</p>`;
+}
+function recordBrilliants(rec, data) {
+  const d = D(); d.brill = d.brill || []; let add = false;
+  data.cls.forEach((k, i) => {
+    if (k !== 'brilliant' || (i % 2 ? 'b' : 'w') !== rec.me) return; const key = rec.id + ':' + i; if (d.brill.some(x => x.k === key)) return;
+    const g = new Chess(data.fens[i]), m = g.move(data.sans[i], { sloppy: true }); if (!m) return;
+    d.brill.unshift({ k: key, san: m.san, from: m.from, to: m.to, fen: data.fens[i], opp: rec.opp, date: rec.date }); add = true;
+  });
+  if (add) { d.brill = d.brill.slice(0, 30); persist(); }
+}
+
+/* ---------- Play in person: two players share this device; Stockfish rates every move after 1 second ---------- */
+let PI = null;
+function stopPerson() { if (PI) { PI.tok = (PI.tok || 0) + 1; clearInterval(PI.iv); } if (SFW) { try { SFW.postMessage('stop'); } catch (e) {} } }
+function rateMove(sg, evB, evA, isBest, secEv, fenB, san, sansTo) {   // same rating rules as the game review
+  const before = wp(sg * evB), after = wp(sg * evA), l = Math.max(0, before - after), sw = secEv == null ? null : wp(sg * secEv); let k;
+  if (inBook(sansTo)) k = 'book';
+  else if (isBest || l <= .5) { k = 'best'; if (isBest && sw != null && before - sw >= 15 && before < 90) k = 'great'; if ((isBest || l <= 1.5) && after >= 45 && before < 92 && isSac(fenB, san)) k = 'brilliant'; }
+  else if (l <= 2) k = 'excellent'; else if (l <= 5) k = 'good'; else if (l <= 10) k = 'inaccuracy';
+  else if (l <= 20) k = before >= 70 && after >= 35 ? 'miss' : 'mistake'; else k = before >= 75 && after >= 35 ? 'miss' : 'blunder';
+  return k;
+}
+function personView() {
+  stopPerson(); const keep = PI || {}; PI = { tcI: keep.tcI == null ? 6 : keep.tcI, rot: !!keep.rot, tok: 0 };
+  $('#app').innerHTML = layout(); PI.B = Board($('#bd'), { g: new Chess(), can: c => PI.on && c === PI.g.turn(), onMove: piMove }); piPanel();
+}
+function piStart() {
+  PI.g = new Chess(); PI.B.g = PI.g; PI.B.last = null; PI.B.badge = null; PI.B.flip = false; PI.B.arrows = []; PI.B.marks = []; PI.B.draw();
+  PI.tc = TCS[PI.tcI]; PI.clk = { w: PI.tc.m * 60000, b: PI.tc.m * 60000 }; PI.ts = Date.now(); PI.on = true; PI.over = false; PI.msg = 'White to move.';
+  PI.sans = []; PI.played = []; PI.fens = [PI.g.fen()]; PI.ev = []; PI.best = []; PI.sec = []; PI.cls = []; PI.queue = [0]; PI.tok++; PI.running = false; PI.noSf = false;
+  clearInterval(PI.iv); PI.iv = setInterval(piTick, 200); piRun(); piPanel();
+}
+function piMove(mv) {
+  const mover = PI.g.turn() === 'w' ? 'b' : 'w', now = Date.now();
+  PI.clk[mover] = Math.max(0, PI.clk[mover] - (now - PI.ts)) + PI.tc.inc * 1000; PI.ts = now;
+  PI.sans.push(mv.san); PI.played.push(mv.from + mv.to + (mv.promotion || '')); PI.fens.push(PI.g.fen()); PI.last = mv; PI.B.badge = null; PI.queue.push(PI.fens.length - 1);
+  if (PI.g.game_over()) piEnd(PI.g.in_checkmate() ? (mover === 'w' ? 'White' : 'Black') + ' wins by checkmate.' : 'Draw.');
+  else { PI.msg = (PI.g.turn() === 'w' ? 'White' : 'Black') + ' to move.' + (PI.g.in_check() ? ' Check!' : ''); if (PI.rot) PI.B.flip = PI.g.turn() === 'b'; }
+  piRun(); piPanel();
+}
+function piEnd(msg) { PI.on = false; PI.over = true; PI.msg = msg; clearInterval(PI.iv); }
+function piResign(c) { if (PI.on) { piEnd((c === 'w' ? 'White' : 'Black') + ' resigns. ' + (c === 'w' ? 'Black' : 'White') + ' wins.'); piPanel(); } }
+function piTick() {
+  if (!PI.on) return; const t = PI.g.turn(), now = Date.now();
+  for (const c of ['w', 'b']) { const ms = Math.max(0, PI.clk[c] - (t === c ? now - PI.ts : 0)), e = $('#pk' + c); if (e) { e.querySelector('b').textContent = fmt(ms); e.classList.toggle('act', t === c); } }
+  if (PI.clk[t] - (now - PI.ts) <= 0) { PI.clk[t] = 0; piEnd((t === 'w' ? 'White' : 'Black') + ' ran out of time. ' + (t === 'w' ? 'Black' : 'White') + ' wins.'); piPanel(); }
+}
+async function piRun() {   // analyses each new position for 1 second, one after another
+  if (PI.running) return; PI.running = true; const tok = PI.tok;
+  try {
+    const w = await sfGet(); if (!w) { PI.noSf = true; return; }
+    while (PI && PI.tok === tok && PI.queue.length) {
+      const i = PI.queue.shift(), fen = PI.fens[i], c = new Chess(fen), sg = c.turn() === 'w' ? 1 : -1; let cp = 0, b = null, s2 = null;
+      if (c.in_checkmate()) cp = -sg * 10000; else if (!c.game_over()) { const r = await sfEval(w, fen, 1000); cp = r.lines[1] ? sg * r.lines[1].cp : 0; b = r.best; s2 = r.lines[2] ? sg * r.lines[2].cp : null; }
+      if (PI.tok !== tok) break; PI.ev[i] = cp; PI.best[i] = b; PI.sec[i] = s2;
+      if (i > 0) PI.cls[i - 1] = rateMove(i % 2 ? 1 : -1, PI.ev[i - 1], cp, PI.played[i - 1] === PI.best[i - 1], PI.sec[i - 1], PI.fens[i - 1], PI.sans[i - 1], PI.sans.slice(0, i));
+      piPanel();
+    }
+  } catch (e) {} finally { if (PI && PI.tok === tok) PI.running = false; }
+}
+function piPanel() {
+  const el = $('#pn'); if (!el || !PI) return;
+  if (!PI.on && !PI.over) {
+    el.innerHTML = `<h2>Play in person</h2><div class="chips"><button class="chip" onclick="P.mode='bot';playView()">Play a bot</button><button class="chip on">Play in person</button></div>
+    <p class="mut">Two players share this device and move on the on-screen board, like a real game. Stockfish rates every move after 1 second.</p>
+    <h3>Time control</h3><div class="chips">${TCS.map((t, i) => `<button class="chip ${PI.tcI == i ? 'on' : ''}" onclick="PI.tcI=${i};piPanel()">${t.l}</button>`).join('')}</div>
+    <div class="chips"><button class="chip ${PI.rot ? 'on' : ''}" onclick="PI.rot=!PI.rot;piPanel()">Turn the board after each move: ${PI.rot ? 'On' : 'Off'}</button></div>
+    <button class="btn" onclick="piStart()">Start game</button>`; return;
+  }
+  const B = PI.B, n = PI.sans.length, k = PI.cls[n - 1], mvs = PI.last;
+  if (n && k && mvs) B.badge = { sq: mvs.to, from: mvs.from, k, col: RV_COL[k] }; else B.badge = null; B.draw();
+  const box = (c, name) => `<div class="clk ${PI.on && PI.g.turn() === c ? 'act' : ''}" id="pk${c}"><span>${name}</span><b>${fmt(Math.max(0, PI.clk[c] - (PI.on && PI.g.turn() === c ? Date.now() - PI.ts : 0)))}</b></div>`;
+  let card = ''; if (n) {
+    if (k) { let bs = ''; try { const bu = PI.best[n - 1], gg = new Chess(PI.fens[n - 1]), m = gg.move({ from: bu.slice(0, 2), to: bu.slice(2, 4), promotion: bu[4] }); bs = m ? m.san : ''; } catch (e) {}
+      card = `<div class="stat"><img class="mi" style="width:26px;height:26px" src="reviews/${k}.png" alt=""> ${esc(PI.sans[n - 1])} is ${RV_TXT[k]}.${['inaccuracy', 'mistake', 'miss', 'blunder'].includes(k) && bs ? `<br><span style="font-weight:400">Best was <b>${esc(bs)}</b>.</span>` : ''}</div>`; }
+    else card = `<div class="stat">${PI.noSf ? 'Stockfish could not be loaded, so moves cannot be rated. See the review instructions for installing it.' : 'Stockfish is analysing the move…'}</div>`; }
+  let rows = ''; for (let i = 0; i < n; i += 2) rows += `<tr><td class="mn">${i / 2 + 1}.</td>${[i, i + 1].map(j => j < n ? `<td class="${j === n - 1 ? 'cur' : ''}">${esc(PI.sans[j])}${PI.cls[j] ? `<img class="mi" src="reviews/${PI.cls[j]}.png" alt="">` : ''}</td>` : '<td></td>').join('')}</tr>`;
+  el.innerHTML = `<h2>Play in person <span class="mut" style="font-size:16px">${PI.tc.l}</span></h2>${box('b', 'Black')}${box('w', 'White')}<div class="stat">${PI.msg}</div>${card}
+  <div class="mv"><table class="mvt">${rows || '<tr><td class="mut">No moves yet.</td></tr>'}</table></div>
+  <div class="row"><button class="chip" onclick="PI.B.flip=!PI.B.flip;PI.B.draw()">Flip board</button><button class="chip ${PI.rot ? 'on' : ''}" onclick="PI.rot=!PI.rot;piPanel()">Turn each move</button>
+  ${PI.on ? `<button class="chip" onclick="piResign('w')">White resigns</button><button class="chip" onclick="piResign('b')">Black resigns</button><button class="chip" onclick="piEnd('Draw agreed.');piPanel()">Draw</button>` : `<button class="btn" style="margin:0" onclick="personView()">New game</button>`}</div>`;
+}
+
 /* ---------- Game review with Stockfish (like chess.com's review) ---------- */
 // Stockfish is loaded in a Web Worker. It tries your own copy first (stockfish/stockfish.js next to index.html), then public CDNs.
 const SF_URLS = ['stockfish/stockfish.js', 'https://cdn.jsdelivr.net/npm/stockfish@10.0.2/src/stockfish.js', 'https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/stockfish.js', 'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js'];
+// the square of a reviewed move is tinted with the colour of its rating (same colours as chess.com)
+const RV_COL = { brilliant: '#26c2a3', great: '#5c8bb0', best: '#96bc4b', excellent: '#96bc4b', good: '#97af8b', book: '#a88865', inaccuracy: '#f7c631', mistake: '#e6912c', miss: '#ca3431', blunder: '#ca3431' };
 const RV_CLS = ['brilliant', 'great', 'best', 'excellent', 'good', 'book', 'inaccuracy', 'mistake', 'miss', 'blunder'];
 const RV_TXT = { brilliant: 'a brilliant move', great: 'a great move', best: 'the best move', excellent: 'an excellent move', good: 'a good move', book: 'a book move', inaccuracy: 'an inaccuracy', mistake: 'a mistake', miss: 'a miss', blunder: 'a blunder' };
 const wp = cp => 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);   // win chance (%) from a centipawn score
@@ -975,36 +1298,51 @@ async function analyzeGame(rec, progress) {
 }
 const accOf = (loss, par) => { const a = loss.filter((_, i) => i % 2 === par).map(l => Math.max(0, Math.min(100, 103.1668 * Math.exp(-0.04354 * l) - 3.1669))); return a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length * 10) / 10 : 0; };
 let RV = null;
-async function reviewView(id) {
-  const rec = (D().hist || []).find(x => x.id === id); if (!rec) { location.hash = '#history'; return; }
-  $('#app').innerHTML = layout(); const tok = RV = { rec, n: 0, data: null }; RV.B = Board($('#bd'), { g: new Chess(), can: () => false }); RV.B.flip = rec.me === 'b';
-  $('#pn').innerHTML = `<p style="margin:0"><a href="#history">← Game history</a></p><h2>Game review</h2><div class="stat" id="rvs">Starting Stockfish…</div><div class="bar"><i id="rvb" style="width:0"></i></div>`;
+async function reviewView(arg) {
+  let rec, who = null, back = '#history', id = arg;
+  if (arg.includes('/')) { const [pid, gid] = arg.split('/'); let p = null; try { p = await getPlayer(pid); } catch (e) {} rec = p && (p.h || []).find(x => x.id === gid); who = p && p.u; back = '#player/' + pid + '/games'; id = pid + '_' + gid; }
+  else rec = (D().hist || []).find(x => x.id === arg);
+  if (!rec) { location.hash = '#history'; return; }
+  $('#app').innerHTML = layout(); const tok = RV = { rec, who, back, n: 0, data: null }; RV.B = Board($('#bd'), { g: new Chess(), can: () => false }); RV.B.flip = rec.me === 'b';
+  $('#pn').innerHTML = `<p style="margin:0"><a href="${back}">Back</a></p><h2>Game review</h2><div class="stat" id="rvs">Starting Stockfish…</div><div class="bar"><i id="rvb" style="width:0"></i></div>`;
   try {
     let data = null; try { data = JSON.parse(localStorage.getItem('tc_rv_' + id) || 'null'); } catch (e) {}
     if (!data) { data = await analyzeGame(rec, (i, n) => { if (RV === tok && $('#rvs')) { $('#rvs').textContent = `Stockfish is analysing the game… move ${i} of ${n}`; $('#rvb').style.width = i / n * 100 + '%'; } }); try { localStorage.setItem('tc_rv_' + id, JSON.stringify(data)); } catch (e) {} }
-    if (RV !== tok) return; RV.data = data; rvShow(data.sans.length);
+    if (RV !== tok) return; RV.data = data; if (!who) recordBrilliants(rec, data); rvShow(data.sans.length);
   } catch (e) {
-    if (RV === tok) $('#pn').innerHTML = `<p style="margin:0"><a href="#history">← Game history</a></p><h2>Game review</h2><div class="stat">Stockfish could not be loaded.</div><p>Download <b>stockfish.js</b> (for example from github.com/nmrugg/stockfish.js) and save it as <b>stockfish/stockfish.js</b> next to index.html, then reload this page.</p>`;
+    if (RV === tok) $('#pn').innerHTML = `<p style="margin:0"><a href="${back}">Back</a></p><h2>Game review</h2><div class="stat">Stockfish could not be loaded.</div><p>Download <b>stockfish.js</b> (for example from github.com/nmrugg/stockfish.js) and save it as <b>stockfish/stockfish.js</b> next to index.html, then reload this page.</p>`;
   }
 }
-function rvShow(n) {
-  const R = RV, d = R.data, rec = R.rec; if (!d) return; R.n = Math.max(0, Math.min(d.sans.length, n)); n = R.n;
+function rvShow(n, allow) {
+  const R = RV, d = R.data, rec = R.rec; if (!d) return; R.allow = !!allow; R.n = Math.max(0, Math.min(d.sans.length, n)); n = R.n;
   const g = new Chess(); let last = null; for (let k = 0; k < n; k++) { const m = g.move(d.sans[k], { sloppy: true }); last = m; }
-  const B = R.B; B.g = g; B.last = last && [last.from, last.to]; B.sel = null; B.marks = []; B.badge = n ? { sq: last.to, k: d.cls[n - 1] } : null; B.arrows = [];
+  const B = R.B; B.g = g; B.last = last && [last.from, last.to]; B.sel = null; B.marks = []; B.badge = n ? { sq: last.to, from: last.from, k: d.cls[n - 1], col: RV_COL[d.cls[n - 1]] } : null; B.arrows = [];
   if (n && ['inaccuracy', 'mistake', 'miss', 'blunder'].includes(d.cls[n - 1]) && d.bestU[n - 1]) B.arrows = [[d.bestU[n - 1].slice(0, 2), d.bestU[n - 1].slice(2, 4)]];
   B.draw(); if (n) sound(last, g);
-  const names = { w: rec.me === 'w' ? CUR.u : rec.opp, b: rec.me === 'b' ? CUR.u : rec.opp }, cnt = { w: {}, b: {} };
+  const names = { w: rec.me === 'w' ? (R.who || CUR.u) : rec.opp, b: rec.me === 'b' ? (R.who || CUR.u) : rec.opp }, cnt = { w: {}, b: {} };
   d.cls.forEach((k, i) => { const c = i % 2 ? 'b' : 'w'; cnt[c][k] = (cnt[c][k] || 0) + 1; });
   let fb = ''; if (n) { const k = d.cls[n - 1], bu = d.bestU[n - 1]; let bs = ''; try { const gg = new Chess(d.fens[n - 1]), m = gg.move({ from: bu.slice(0, 2), to: bu.slice(2, 4), promotion: bu[4] }); bs = m ? m.san : ''; } catch (e) {}
     fb = `<div class="stat"><img class="mi" style="width:26px;height:26px" src="reviews/${k}.png" alt=""> ${esc(d.sans[n - 1])} is ${RV_TXT[k]}.${['inaccuracy', 'mistake', 'miss', 'blunder'].includes(k) && bs ? `<br><span style="font-weight:400">Best was <b>${esc(bs)}</b>.</span>` : ''}</div>`; }
+  if (n && ['inaccuracy', 'mistake', 'miss', 'blunder'].includes(d.cls[n - 1])) {   // "Show": what did this move allow the opponent to do?
+    const mine = (n % 2 ? 'w' : 'b') === rec.me; let extra = '';
+    if (R.allow && d.bestU[n]) {
+      const u = d.bestU[n], gg = new Chess(g.fen()), m = gg.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
+      if (m) {
+        const e2 = d.ev[n], more = [m.captured ? `capturing ${mine ? 'your' : 'the'} ${PN[m.captured]}` : '', gg.in_checkmate() ? 'with checkmate' : gg.in_check() ? 'with check' : ''].filter(Boolean).join(' ');
+        extra = `<div style="font-weight:400;margin-top:6px">After ${esc(d.sans[n - 1])}, ${mine ? 'your opponent' : 'you'} could play <b>${esc(m.san)}</b>${more ? ', ' + more : ''}. The evaluation becomes ${Math.abs(e2) >= 9000 ? 'a forced mate' : (e2 >= 0 ? '+' : '') + (e2 / 100).toFixed(2)}.</div><button class="chip" style="margin-top:6px" onclick="rvShow(${n})">Hide</button>`;
+        setTimeout(() => { if (RV === R && R.n === n && R.allow) { B.g = gg; B.last = [m.from, m.to]; B.badge = null; B.arrows = []; B.draw(); sound(m, gg); } }, 350);
+      }
+    } else extra = `<button class="chip" style="margin-top:6px" onclick="rvShow(${n}, true)">Show</button>`;
+    fb = fb.slice(0, -6) + extra + '</div>';
+  }
   const ev = d.ev[n], wpw = wp(ev), evTxt = Math.abs(ev) >= 9000 ? 'Mate' : (ev >= 0 ? '+' : '') + (ev / 100).toFixed(2);
   let rows = ''; for (let i = 0; i < d.sans.length; i += 2) rows += `<tr><td class="mn">${i / 2 + 1}.</td>${[i, i + 1].map(k => k < d.sans.length ? `<td class="gm ${k === n - 1 ? 'cur' : ''}" onclick="rvShow(${k + 1})">${esc(d.sans[k])}<img class="mi" src="reviews/${d.cls[k]}.png" alt=""></td>` : '<td></td>').join('')}</tr>`;
-  $('#pn').innerHTML = `<p style="margin:0"><a href="#history">← Game history</a></p><h2>Game review</h2>
-  <div class="row" style="margin:6px 0"><div class="stat" style="flex:1;margin:0">⚪ ${esc(names.w)}<br><span style="font-size:22px">${accOf(d.loss, 0)}%</span> <span class="mut" style="font-weight:400;font-size:13px">accuracy</span></div><div class="stat" style="flex:1;margin:0">⚫ ${esc(names.b)}<br><span style="font-size:22px">${accOf(d.loss, 1)}%</span> <span class="mut" style="font-weight:400;font-size:13px">accuracy</span></div></div>
+  $('#pn').innerHTML = `<p style="margin:0"><a href="${R.back}">Back</a></p><h2>Game review</h2>
+  <div class="row" style="margin:6px 0"><div class="stat" style="flex:1;margin:0">White ${esc(names.w)}<br><span style="font-size:22px">${accOf(d.loss, 0)}%</span> <span class="mut" style="font-weight:400;font-size:13px">accuracy</span></div><div class="stat" style="flex:1;margin:0">Black ${esc(names.b)}<br><span style="font-size:22px">${accOf(d.loss, 1)}%</span> <span class="mut" style="font-weight:400;font-size:13px">accuracy</span></div></div>
   <div style="display:flex;height:14px;border-radius:7px;overflow:hidden;border:1px solid var(--line);margin:8px 0 2px"><div style="width:${wpw}%;background:#fff"></div><div style="flex:1;background:#2b3a5c"></div></div><div class="mut" style="font-size:13px">Evaluation: ${evTxt}</div>
   ${fb}<div class="mv" style="max-height:230px"><table class="mvt">${rows}</table></div>
-  <div class="row"><button class="chip" onclick="rvShow(0)">⏮</button><button class="chip" onclick="rvShow(RV.n-1)">◀</button><button class="chip" onclick="rvShow(RV.n+1)">▶</button><button class="chip" onclick="rvShow(RV.data.sans.length)">⏭</button><button class="chip" onclick="RV.B.flip=!RV.B.flip;RV.B.draw()">Flip board</button></div>
-  <table class="ht" style="margin-top:12px"><tr><td></td><td class="mut">⚪</td><td class="mut">⚫</td></tr>${RV_CLS.filter(k => cnt.w[k] || cnt.b[k]).map(k => `<tr style="cursor:default"><td><img class="mi" style="margin:0 8px 0 0;width:20px;height:20px" src="reviews/${k}.png" alt="">${k[0].toUpperCase() + k.slice(1)}</td><td>${cnt.w[k] || 0}</td><td>${cnt.b[k] || 0}</td></tr>`).join('')}</table>`;
+  <div class="row"><button class="chip" onclick="rvShow(0)">|&lt;</button><button class="chip" onclick="rvShow(RV.n-1)">&lt;</button><button class="chip" onclick="rvShow(RV.n+1)">&gt;</button><button class="chip" onclick="rvShow(RV.data.sans.length)">&gt;|</button><button class="chip" onclick="RV.B.flip=!RV.B.flip;RV.B.draw()">Flip board</button></div>
+  <table class="ht" style="margin-top:12px"><tr><td></td><td class="mut">White</td><td class="mut">Black</td></tr>${RV_CLS.filter(k => cnt.w[k] || cnt.b[k]).map(k => `<tr style="cursor:default"><td><img class="mi" style="margin:0 8px 0 0;width:20px;height:20px" src="reviews/${k}.png" alt="">${k[0].toUpperCase() + k.slice(1)}</td><td>${cnt.w[k] || 0}</td><td>${cnt.b[k] || 0}</td></tr>`).join('')}</table>`;
 }
 addEventListener('keydown', e => { if (RV && RV.data && location.hash.startsWith('#review/')) { if (e.key === 'ArrowLeft') rvShow(RV.n - 1); if (e.key === 'ArrowRight') rvShow(RV.n + 1); } });
 
@@ -1020,18 +1358,18 @@ function profileView() {
   <p>${w} wins · ${dr} draws · ${d.games.length - w - dr} losses · ${d.pz.length}/${PZ.length} puzzles</p></div>
   <h3>Recent games</h3><div class="card">${d.games.length ? '<table>' + d.games.slice(0, 10).map(g => `<tr><td>${g.s === 1 ? 'Win' : g.s === .5 ? 'Draw' : 'Loss'}</td><td>vs ${g.b}</td><td>${Math.ceil(g.n / 2)} moves</td><td>${g.d >= 0 ? '+' : ''}${g.d}</td></tr>`).join('') + '</table>' : '<span class="mut">No games yet.</span>'}</div></div>`;
 }
-const VIEWS = { home: homeView, play: playView, puzzles: puzzleView, openings: openingsView, profile: profileView, online: onlineView, titles: titlesView, history: historyView, game: gameView, review: reviewView, search: searchView, player: playerView, pgame: pgameView, login: () => authView(false), signup: () => authView(true) };
-const NAV = [['play', 'Play'], ['online', 'Online'], ['puzzles', 'Puzzles'], ['openings', 'Openings'], ['history', 'History'], ['titles', 'Titles'], ['search', 'Search'], ['profile', 'Profile']];
+const VIEWS = { home: homeView, play: playView, puzzles: puzzleView, openings: openingsView, profile: profileView, online: onlineView, titles: titlesView, history: historyView, game: gameView, review: reviewView, friends: friendsView, requests: requestsView, settings: settingsView, brill: brillView, search: searchView, player: playerView, pgame: pgameView, login: () => authView(false), signup: () => authView(true) };
+const NAV = [['play', 'Play'], ['online', 'Online'], ['puzzles', 'Puzzles'], ['openings', 'Openings'], ['history', 'History'], ['titles', 'Titles'], ['search', 'Search'], ['friends', 'Friends'], ['requests', 'Requests'], ['profile', 'Profile'], ['settings', 'Settings']];
 function route() {
-  speechSynthesis.cancel(); stopOnline(); clearInterval(SR);
-  $('#nav').innerHTML = NAV.map(([k, l]) => `<a href="#${k}">${l}</a>`).join('');   // the menu is built here, so it always matches the pages
+  stopVoice(); stopOnline(); stopPerson(); clearInterval(SR);
+  renderNav();   // the menu is built by the script, so it always matches the pages
   document.body.classList.toggle('out', !ME);
-  $('#acc').innerHTML = ME ? `<span class="chip">👤 ${tt(titleOf(D()))}${esc(CUR.u)} · ${D().rating}</span><button class="chip" onclick="logout()">Log out</button>` : '<a class="chip" href="#login">Log in</a><a class="btn" style="margin:0;padding:7px 14px" href="#signup">Sign up</a>';
+  $('#acc').innerHTML = ME ? `<span class="chip">${tt(titleOf(D()))}${esc(CUR.u)} · ${D().rating}</span><button class="chip" onclick="logout()">Log out</button>` : '<a class="chip" href="#login">Log in</a><a class="btn" style="margin:0;padding:7px 14px" href="#signup">Sign up</a>';
   let k = location.hash.slice(1), arg = null; const sl = k.indexOf('/'); if (sl > 0) { arg = k.slice(sl + 1); k = k.slice(0, sl); } if (!VIEWS[k]) k = 'home';
   if (!ME && k !== 'login' && k !== 'signup') { location.hash = '#login'; return; }   // everything needs an account
   if (ME && !CUR) return logout();
-  document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + (k === 'game' || k === 'review' ? 'history' : ['search', 'player', 'pgame'].includes(k) ? 'search' : k)));
-  startPresence(); VIEWS[k](arg); scrollTo(0, 0);
+  document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + (k === 'game' || k === 'review' ? 'history' : ['search', 'player', 'pgame', 'brill'].includes(k) ? 'search' : k)));
+  startPresence(); countReq(); VIEWS[k](arg); scrollTo(0, 0);
 }
 addEventListener('hashchange', route);
 (async () => { if (ME) { try { CUR = await getAcc(ME); } catch (e) {} if (!CUR) ME = null; else await loadMyTitle(); } route(); })();
